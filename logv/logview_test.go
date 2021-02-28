@@ -58,10 +58,14 @@ func BenchmarkLogView(b *testing.B) {
 	lv.SetLevelHighlighting(true)
 
 	ts := time.Now().Add(-24 * time.Hour)
+	events := randomBenchEvents(eventCount, ts)
+
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		lv.AppendEvents(randomBenchEvents(50, ts))
+		lv.AppendEvents(events)
 		lv.Draw(screen)
 	}
+
 }
 
 func randomBenchEvents(count int, startingTimestamp time.Time) []*LogEvent {

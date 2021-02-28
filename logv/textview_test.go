@@ -7,19 +7,65 @@ import (
 	"testing"
 )
 
-func BenchmarkTextView(b *testing.B) {
-	screen := tcell.NewSimulationScreen("UTF-8")
-	lv := cview.NewTextView()
+const eventCount = 50
 
+func BenchmarkTextViewReindexOn(b *testing.B) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	tv := cview.NewTextView()
+	tv.SetDynamicColors(true)
+
+	events := randomBenchStrings(eventCount)
+
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		for _, s := range randomBenchStrings(50) {
-			_, err := lv.Write([]byte(s))
+		for _, s := range events {
+			_, err := tv.Write([]byte(s))
 			if err != nil {
 				panic(err)
 			}
-			lv.Draw(screen)
+			tv.Draw(screen)
 		}
 	}
+}
+
+func BenchmarkTextViewReindexOff(b *testing.B) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	tv := cview.NewTextView()
+	tv.SetReindexBuffer(false)
+	tv.SetDynamicColors(true)
+
+	events := randomBenchStrings(eventCount)
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		for _, s := range events {
+			_, err := tv.Write([]byte(s))
+			if err != nil {
+				panic(err)
+			}
+			tv.Draw(screen)
+		}
+	}
+}
+
+func BenchmarkTextViewSingleDraw(b *testing.B) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	tv := cview.NewTextView()
+	tv.SetReindexBuffer(false)
+	tv.SetDynamicColors(true)
+
+	events := randomBenchStrings(eventCount)
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		for _, s := range events {
+			_, err := tv.Write([]byte(s))
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+	tv.Draw(screen)
 }
 
 func randomBenchStrings(count int) []string {
