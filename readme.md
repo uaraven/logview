@@ -14,7 +14,7 @@ log event added. It also uses different internal representation for data that al
 "append last"/"delete first" operations.
 
 LogView operates on LogEvent structures, not on text lines, this allows keeping track of which line belongs to
-which event even with wrapping enabled.
+which event even with wrapping enabled and easy navigation to specific log event by its ID or timestamp.
 
 ## Capabilities
 
