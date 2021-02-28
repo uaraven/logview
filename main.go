@@ -8,6 +8,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type UI struct {
@@ -76,6 +77,8 @@ func main() {
 	ui.logView.SetHighlighting(true)
 	ui.logView.SetLevelHighlighting(true)
 	ui.logView.SetHighlightCurrentEvent(true)
+	ui.logView.SetShowTimestamp(true)
+	ui.logView.SetShowSource(true)
 
 	content, err := ioutil.ReadFile("test.log")
 
@@ -87,9 +90,11 @@ func main() {
 
 	for i, line := range lines {
 		event := &logv.LogEvent{
-			EventID: strconv.Itoa(i),
-			Level:   logv.LogLevelInfo,
-			Message: line,
+			EventID:   strconv.Itoa(i),
+			Level:     logv.LogLevelInfo,
+			Message:   line,
+			Source:    "S " + strconv.Itoa(i),
+			Timestamp: time.Now(),
 		}
 		ui.logView.AppendLogEvent(event)
 	}

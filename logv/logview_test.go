@@ -47,6 +47,40 @@ func TestLogView_ScrollToTimestamp(t *testing.T) {
 	}
 }
 
+func TestLogView_ScrollToTop(t *testing.T) {
+	lv := NewLogView()
+	lv.SetHighlightCurrentEvent(true)
+	ts := time.Now().Add(-24 * time.Hour)
+	lv.AppendEvents(randomEvents(100, ts))
+
+	lv.ScrollToTop()
+
+	if lv.GetCurrentEvent().EventID != "e0" {
+		t.Errorf("Failed to scroll to top")
+	}
+}
+
+func TestLogView_ScrollToBottom(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	screen.SetSize(100, 10)
+	lv := NewLogView()
+	lv.SetHighlightCurrentEvent(true)
+	ts := time.Now().Add(-24 * time.Hour)
+	lv.AppendEvents(randomEvents(100, ts))
+	lv.Draw(screen) // prime page sizes
+
+	lv.ScrollToTop()
+	lv.SetFollowing(false)
+	lv.ScrollToBottom()
+
+	if lv.GetCurrentEvent().EventID != "e99" ||
+		lv.top.EventID != "e90" ||
+		!lv.IsFollowing() {
+		t.Errorf("Failed to scroll to top, current eventID=%s, top EventID=%s, following=%t",
+			lv.GetCurrentEvent().EventID, lv.top.EventID, lv.IsFollowing())
+	}
+}
+
 func BenchmarkLogView(b *testing.B) {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	lv := NewLogView()

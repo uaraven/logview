@@ -3,6 +3,7 @@ package logv
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -128,50 +129,123 @@ type LogView struct {
 	highlightCurrent bool
 	currentBgColor   tcell.Color
 
+	sourceStyle    tcell.Style
+	timestampStyle tcell.Style
+
 	// as new events are appended, older events are scrolled up, like tail -f
 	following bool
 
-	showSource      bool
-	showTimestamp   bool
-	timestampFormat string
-	wrap            bool
+	showSource       bool
+	sourceClipLength int
+	showTimestamp    bool
+	timestampFormat  string
+	wrap             bool
 
-	textColor       tcell.Color
-	backgroundColor tcell.Color
-	defaultStyle    tcell.Style
+	defaultStyle tcell.Style
 
 	hasFocus bool
 
 	lastWidth, lastHeight int
 	pageHeight, pageWidth int
+	fullPageWidth         int
 	screenCoords          []int
 
 	onCurrentChanged OnCurrentChanged
+
+	// force rewrapping on next draw
+	forceWrap bool
 
 	sync.RWMutex
 }
 
 // NewLogView returns a new log view.
 func NewLogView() *LogView {
+	defaultStyle := tcell.StyleDefault.Foreground(cview.Styles.PrimaryTextColor).Background(cview.Styles.PrimitiveBackgroundColor)
 	logView := &LogView{
 		Box:                 cview.NewBox(),
 		showSource:          false,
 		showTimestamp:       false,
 		timestampFormat:     "15:04:05.000",
+		sourceClipLength:    6,
 		wrap:                true,
 		following:           true,
 		highlightingEnabled: true,
-		textColor:           cview.Styles.PrimaryTextColor,
-		backgroundColor:     cview.Styles.PrimitiveBackgroundColor,
+		defaultStyle:        defaultStyle,
 		currentBgColor:      tcell.ColorDimGray,
 		warningBgColor:      tcell.ColorSaddleBrown,
 		errorBgColor:        tcell.ColorIndianRed,
+		sourceStyle:         defaultStyle.Foreground(tcell.ColorDarkGoldenrod),
+		timestampStyle:      defaultStyle.Foreground(tcell.ColorDarkOrange),
 		highlightColors:     make(map[string]tcell.Style),
 		screenCoords:        make([]int, 2),
 	}
 	logView.Box.SetBorder(false)
-	logView.updateDefaultStyle()
 	return logView
+}
+
+func (lv *LogView) SetLineWrap(enabled bool) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	if lv.wrap != enabled {
+		lv.forceWrap = true
+	}
+	lv.wrap = enabled
+}
+
+func (lv *LogView) IsLineWrapEnabled() bool {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.wrap
+}
+
+// SetTextStyle sets the default style for the log messages
+func (lv *LogView) SetTextStyle(style tcell.Style) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.defaultStyle = style
+}
+
+// SetSourceStyle sets the style for displaying event source
+func (lv *LogView) SetSourceStyle(style tcell.Style) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.sourceStyle = style
+}
+
+// SetTimestampStyle sets the style for displaying event timestamp
+func (lv *LogView) SetTimestampStyle(style tcell.Style) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.timestampStyle = style
+}
+
+// SetCurrentBgColor sets the background color to highlight currently selected event
+func (lv *LogView) SetCurrentBgColor(color tcell.Color) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.currentBgColor = color
+}
+
+// SetWarningBgColor sets the background color to highlight events with LogLevelWarning level
+func (lv *LogView) SetWarningBgColor(color tcell.Color) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.warningBgColor = color
+}
+
+// SetErrorBgColor sets the background color to highlight events with LogLevelError level
+func (lv *LogView) SetErrorBgColor(color tcell.Color) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.errorBgColor = color
 }
 
 // SetEventLimit sets the limit to number of log event held by log view.
@@ -186,12 +260,12 @@ func (lv *LogView) SetEventLimit(limit uint) {
 	lv.ensureEventLimit()
 }
 
-// InvalidateHighlights forces recalculation of highlight patterns for all events in the log view.
+// RefreshHighlights forces recalculation of highlight patterns for all events in the log view.
 // LogView calculates highlight spans once for each event when the event is appended. Any changes in highlighting
 // will not be applied to the events that are already in the log view.
 // To apply changes to all the events call this function.
 // Warning: this might be a rather expensive operation
-func (lv *LogView) InvalidateHighlights() {
+func (lv *LogView) RefreshHighlights() {
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -206,7 +280,7 @@ func (lv *LogView) InvalidateHighlights() {
 //
 // Note:
 // Updating pattern doesn't changes highlighting for previously appended events
-// Call InvalidateHighlights() to force updating highlighting for all events in the log view.
+// Call RefreshHighlights() to force updating highlighting for all events in the log view.
 func (lv *LogView) SetHighlightPattern(pattern string) {
 	lv.Lock()
 	defer lv.Unlock()
@@ -216,7 +290,7 @@ func (lv *LogView) SetHighlightPattern(pattern string) {
 
 // SetHighlighting enables/disables event message highlighting according to the pattern set by SetHighlightPattern.
 //
-// Events appended when this setting was disabled will not be highlighted until InvalidateHighlights function is called.
+// Events appended when this setting was disabled will not be highlighted until RefreshHighlights function is called.
 func (lv *LogView) SetHighlighting(enable bool) {
 	lv.Lock()
 	defer lv.Unlock()
@@ -229,7 +303,7 @@ func (lv *LogView) SetHighlightColorFg(group string, foreground tcell.Color) {
 	lv.Lock()
 	defer lv.Unlock()
 
-	lv.highlightColors[group] = tcell.StyleDefault.Foreground(foreground).Background(lv.backgroundColor)
+	lv.highlightColors[group] = tcell.StyleDefault.Foreground(foreground).Background(lv.getBackgroundColor())
 }
 
 // SetHighlightColorBg sets background color for a named group "group". Default foreground color will be used
@@ -237,7 +311,7 @@ func (lv *LogView) SetHighlightColorBg(group string, background tcell.Color) {
 	lv.Lock()
 	defer lv.Unlock()
 
-	lv.highlightColors[group] = tcell.StyleDefault.Foreground(lv.textColor).Background(background)
+	lv.highlightColors[group] = tcell.StyleDefault.Foreground(lv.getTextColor()).Background(background)
 }
 
 // SetHighlightColor sets both foreground and background colors for a named group "group".
@@ -252,7 +326,7 @@ func (lv *LogView) SetHighlightColor(group string, foreground tcell.Color, backg
 // Event level highlighting can be turned on and off with SetLevelHighlighting function.
 //
 // Changing warning color will do nothing to the events that are already in the log view. To update
-// highlighting of all events use InvalidateHighlights. Be warned: this is an expensive operation
+// highlighting of all events use RefreshHighlights. Be warned: this is an expensive operation
 func (lv *LogView) SetWarningColor(bgColor tcell.Color) {
 	lv.Lock()
 	defer lv.Unlock()
@@ -264,7 +338,7 @@ func (lv *LogView) SetWarningColor(bgColor tcell.Color) {
 // Event level highlighting can be turned on and off with SetLevelHighlighting function.
 //
 // Changing error color will do nothing to the events that are already in the log view. To update
-// highlighting of all events use InvalidateHighlights. Be warned: this is an expensive operation
+// highlighting of all events use RefreshHighlights. Be warned: this is an expensive operation
 func (lv *LogView) SetErrorColor(bgColor tcell.Color) {
 	lv.Lock()
 	defer lv.Unlock()
@@ -338,9 +412,14 @@ func (lv *LogView) Draw(screen tcell.Screen) {
 	lv.screenCoords[0] = x
 	lv.screenCoords[1] = y
 
+	lv.fullPageWidth = width
 	lv.pageHeight = height
 	lv.pageWidth = width
-	if width != lv.lastWidth || height != lv.lastHeight && lv.wrap {
+	if lv.isHeaderPossible() {
+		lv.pageWidth -= lv.headerWidth()
+	}
+	if (width != lv.lastWidth || height != lv.lastHeight && lv.wrap) || lv.forceWrap {
+		lv.forceWrap = false
 		lv.rewrapLines()
 		if lv.following {
 			// ensure correct top line when resizing
@@ -471,6 +550,74 @@ func (lv *LogView) ScrollToEventID(eventID string) bool {
 	return true
 }
 
+// SetShowSources enables/disables the displaying of event source
+//
+// Event Source is displayed to the left of the actual event message with style defined by SetSourceStyle and
+// is clipped to the length set by SetSourceClipLength (6 characters is the default)
+func (lv *LogView) SetShowSource(enabled bool) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.showSource = enabled
+}
+
+// SetSourceClipLength sets the maximum length of event source that would be displayed if SetShowSource is on
+func (lv *LogView) SetSourceClipLength(length int) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.sourceClipLength = length
+}
+
+// GetSourceClipLength returns the current maximum length of event source that would be displayed
+func (lv *LogView) GetSourceClipLength() int {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.sourceClipLength
+}
+
+// SetShowTimestamp enables/disables the displaying of event timestamp
+//
+// Event timestamp is displayed to the left of the actual event message with the format defined by SetTimestampFormat
+func (lv *LogView) SetShowTimestamp(enabled bool) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.showTimestamp = enabled
+}
+
+// SetTimestampFormat sets the format for displaying the event timestamp.
+//
+// Default is 15:04:05.000
+func (lv *LogView) SetTimestampFormat(format string) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.timestampFormat = format
+}
+
+func (lv *LogView) GetTimestampFormat() string {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.timestampFormat
+}
+
+func (lv *LogView) IsShowingTimestamp() bool {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.showTimestamp
+}
+
+func (lv *LogView) IsShowingSource() bool {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.showSource
+}
+
 // InputHandler returns the handler for this primitive.
 func (lv *LogView) InputHandler() func(event *tcell.EventKey, setFocus func(p cview.Primitive)) {
 	return lv.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p cview.Primitive)) {
@@ -553,8 +700,16 @@ func (lv *LogView) setCurrent(newCurrent *logEventLine) {
 }
 
 func (lv *LogView) append(logEvent *LogEvent) {
+	// defensive copy of Log event
+	lEvent := &LogEvent{
+		EventID:   logEvent.EventID,
+		Source:    logEvent.Source,
+		Timestamp: logEvent.Timestamp,
+		Level:     logEvent.Level,
+		Message:   logEvent.Message,
+	}
 	event := &logEventLine{
-		LogEvent:  logEvent,
+		LogEvent:  lEvent,
 		lineCount: 1,
 		lineID:    lv.eventCount + 1,
 		start:     0,
@@ -614,7 +769,7 @@ func (lv *LogView) calculateWrap(event *logEventLine) *logEventLine {
 		return event
 	}
 	if event.order != 0 { // first drop extra event lines
-		event = lv.deleteWrapLines(event)
+		event = lv.mergeWrappedLines(event)
 	}
 	lines := len(event.Message) / lv.pageWidth
 	if len(event.Message)%lv.pageWidth != 0 {
@@ -646,12 +801,12 @@ func findFirstWrappedLine(event *logEventLine) *logEventLine {
 	return event
 }
 
-// deleteWrapLines will delete all extra lines for an event
+// mergeWrappedLines will delete all extra lines for an event
 // if the event order is == 0, it will return the event
 // otherwise it will fine the first event, change its order to 0
 // and delete all subsequent events with order > 0
 // it will update event count accordingly
-func (lv *LogView) deleteWrapLines(event *logEventLine) *logEventLine {
+func (lv *LogView) mergeWrappedLines(event *logEventLine) *logEventLine {
 	if event.order == 0 {
 		return event
 	}
@@ -793,7 +948,7 @@ func (lv *LogView) unwrapLines() {
 	event := lv.firstEvent
 	for event != nil {
 		isTop := event == lv.top
-		event = lv.deleteWrapLines(event)
+		event = lv.mergeWrappedLines(event)
 		if isTop {
 			lv.top = event
 		}
@@ -826,11 +981,69 @@ func (lv *LogView) rewrapLines() {
 
 // drawEvent draws single event on a single line
 func (lv *LogView) drawEvent(screen tcell.Screen, x int, y int, event *logEventLine) {
+	if lv.showSource && lv.isHeaderPossible() {
+		if event.order <= 1 {
+			x = lv.printSource(screen, x, y, event) + 1
+		} else {
+			x += lv.sourceHeaderWidth()
+		}
+	}
+	if lv.showTimestamp {
+		if event.order <= 1 {
+			x = lv.printTimestamp(screen, x, y, event) + 1
+		} else {
+			x += lv.timestampHeaderWidth()
+		}
+	}
+
 	if lv.highlightingEnabled {
 		lv.printLogLine(screen, x, y, event)
 	} else {
 		lv.printLogLineNoHighlights(screen, x, y, event)
 	}
+}
+
+func (lv *LogView) printSource(screen tcell.Screen, x int, y int, event *logEventLine) int {
+	var source string
+	if len(event.Source) > lv.sourceClipLength {
+		source = event.Source[:lv.sourceClipLength]
+	} else {
+		source = fmt.Sprintf("%"+strconv.Itoa(lv.sourceClipLength)+"v", event.Source)
+	}
+	var style tcell.Style
+	if lv.highlightCurrent && event == lv.current {
+		style = lv.defaultStyle.Background(lv.currentBgColor)
+	} else {
+		style = lv.sourceStyle
+	}
+
+	lv.printSpecial(screen, x, y, event, source, style)
+
+	return x + len(source) + 2
+}
+
+func (lv *LogView) printTimestamp(screen tcell.Screen, x int, y int, event *logEventLine) int {
+	ts := event.Timestamp.Format(lv.timestampFormat)
+	var style tcell.Style
+	if lv.highlightCurrent && event == lv.current {
+		style = lv.defaultStyle.Background(lv.currentBgColor)
+	} else {
+		style = lv.timestampStyle
+	}
+	return lv.printSpecial(screen, x, y, event, ts, style)
+}
+
+func (lv *LogView) printSpecial(screen tcell.Screen, x int, y int, event *logEventLine, ts string, style tcell.Style) int {
+	printString(screen, x, y, ts, style)
+
+	if lv.highlightCurrent && event == lv.current {
+		style = lv.defaultStyle.Background(lv.currentBgColor)
+	} else {
+		style = lv.defaultStyle
+	}
+	printString(screen, x+len(ts)+1, y, "|", style)
+
+	return x + len(ts) + 2
 }
 
 // TODO: implement runes and graphemes, now it will be print weird things for unicode characters
@@ -861,6 +1074,13 @@ func (lv *LogView) printLogLine(screen tcell.Screen, x int, y int, event *logEve
 			spanIndex++
 		}
 	}
+	style := lv.defaultStyle.Background(lv.currentBgColor)
+	if i < lv.pageWidth && lv.highlightCurrent && event == lv.current {
+		for i < lv.pageWidth {
+			screen.SetCell(i, y, style, ' ')
+			i++
+		}
+	}
 }
 
 func (lv *LogView) printLogLineNoHighlights(screen tcell.Screen, x int, y int, event *logEventLine) {
@@ -876,10 +1096,20 @@ func (lv *LogView) printLogLineNoHighlights(screen tcell.Screen, x int, y int, e
 			break
 		}
 	}
+	if i < lv.pageWidth && lv.highlightCurrent && event == lv.current {
+		for i < lv.pageWidth {
+			screen.SetCell(i, y, style, ' ')
+			i++
+		}
+	}
 }
 
-func (lv *LogView) updateDefaultStyle() {
-	lv.defaultStyle = tcell.StyleDefault.Foreground(lv.textColor).Background(lv.backgroundColor)
+// printString is the most dump printing function. It just prints the string starting at x,y with
+// a given style. No checks whatsoever are performed
+func printString(screen tcell.Screen, x int, y int, text string, style tcell.Style) {
+	for i, c := range text {
+		screen.SetCell(x+i, y, style, c)
+	}
 }
 
 func (lv *LogView) ensureEventLimit() {
@@ -887,6 +1117,9 @@ func (lv *LogView) ensureEventLimit() {
 		return
 	}
 	for lv.eventCount > lv.eventLimit {
+		if lv.firstEvent.order > 0 {
+			lv.mergeWrappedLines(lv.firstEvent)
+		}
 		lv.deleteEvent(lv.firstEvent)
 	}
 }
@@ -960,4 +1193,41 @@ func (lv *LogView) distance(start *logEventLine, target *logEventLine) int {
 		limit--
 	}
 	return distance
+}
+
+func (lv *LogView) getBackgroundColor() tcell.Color {
+	_, bg, _ := lv.defaultStyle.Decompose()
+	return bg
+}
+
+func (lv *LogView) getTextColor() tcell.Color {
+	fg, _, _ := lv.defaultStyle.Decompose()
+	return fg
+}
+
+// headerWidth returns the width of the header of the log line
+// If showSource or showTimestamp are enabled they create an additional header for the event
+func (lv *LogView) headerWidth() int {
+	w := 0
+	if lv.showSource {
+		w += lv.sourceHeaderWidth()
+	}
+	if lv.showTimestamp {
+		w += lv.timestampHeaderWidth()
+	}
+	return w
+}
+
+// isHeaderPossible determines whether page has enough room to display a header
+// if header is wider than half of the page then header would not be displayed
+func (lv *LogView) isHeaderPossible() bool {
+	return lv.headerWidth() < lv.fullPageWidth*1/2
+}
+
+func (lv *LogView) sourceHeaderWidth() int {
+	return lv.sourceClipLength + 3
+}
+
+func (lv *LogView) timestampHeaderWidth() int {
+	return len(lv.timestampFormat) + 3
 }
