@@ -1,20 +1,22 @@
 package main
 
 import (
+	"fmt"
 	"githib.com/uaraven/logview/logv"
 	"github.com/gdamore/tcell/v2"
 	"gitlab.com/tslocum/cview"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type UI struct {
-	app     *cview.Application
-	header  *cview.TextView
-	logView *logv.LogView
+	app       *cview.Application
+	histogram *logv.LogVelocityView
+	logView   *logv.LogView
 }
 
 // CreateAppUI creates base UI layout
@@ -28,28 +30,22 @@ func CreateAppUI() *UI {
 		return event
 	})
 
-	headerView := cview.NewTextView()
-
 	logView := logv.NewLogView()
 	logView.SetBorder(false)
 
-	header := "[black]Log Group[-]:[navy]/ecs/legal-detection-staging[-]  [black]Time[-]:[navy]tailing[-]"
-	headerView.SetBackgroundColor(tcell.ColorDarkGray)
-	headerView.SetDynamicColors(true)
-	headerView.SetBorder(false)
-	headerView.SetText(header)
+	histogramView := logv.NewLogVelocityView(10 * time.Second)
 
 	flex := cview.NewFlex()
 	flex.SetDirection(cview.FlexRow)
-	flex.AddItem(headerView, 1, 1, false)
 	flex.AddItem(logView, 0, 1, true)
+	flex.AddItem(histogramView, 5, 1, false)
 
 	app.SetRoot(flex, true)
 
 	return &UI{
-		header:  headerView,
-		logView: logView,
-		app:     app,
+		histogram: histogramView,
+		logView:   logView,
+		app:       app,
 	}
 }
 
@@ -88,20 +84,29 @@ func main() {
 
 	lines := strings.Split(string(content), "\n")
 
+	start := time.Now().Add(-15 * time.Minute)
+	current := start
+
 	for i, line := range lines {
 		event := &logv.LogEvent{
 			EventID:   strconv.Itoa(i),
 			Level:     logv.LogLevelInfo,
 			Message:   line,
 			Source:    "S " + strconv.Itoa(i),
-			Timestamp: time.Now(),
+			Timestamp: current,
 		}
+		current = current.Add(time.Duration(rand.Float64() / 2 * float64(time.Second)))
 		ui.logView.AppendLogEvent(event)
+		ui.histogram.AppendLogEvent(event)
 	}
+
+	diff := current.Sub(start)
 
 	//event := logv.NewLogEvent("1", "20:17:51.894 [sqsTaskExecutor-10] ERROR  c.s.d.l.s.s.CopyrightDetectionService - This is the extra long line which originally said just this text that follows: Stored copyright data for pkg:npm/%40mpen/rollup-plugin-clean@0.1.8?checksum=sha1:097f0110bbc8aa5bc1026f2d689f45dcf98fcbc5&sonatype_repository=npmjs.org&type=tgz")
 	//event.Level = logv.LogLevelWarning
 	//ui.logView.AppendLogEvent(event)
 
 	ui.Run()
+
+	fmt.Println(diff)
 }
