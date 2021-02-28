@@ -1055,7 +1055,7 @@ func (lv *LogView) printLogLine(screen tcell.Screen, x int, y int, event *logEve
 	}
 	style := lv.defaultStyle.Background(lv.currentBgColor)
 	if i < lv.pageWidth && lv.highlightCurrent && event == lv.current {
-		for i < lv.pageWidth {
+		for i < x+lv.pageWidth {
 			screen.SetCell(i, y, style, ' ')
 			i++
 		}
@@ -1076,7 +1076,7 @@ func (lv *LogView) printLogLineNoHighlights(screen tcell.Screen, x int, y int, e
 		}
 	}
 	if i < lv.pageWidth && lv.highlightCurrent && event == lv.current {
-		for i < lv.pageWidth {
+		for i < x+lv.pageWidth {
 			screen.SetCell(i, y, style, ' ')
 			i++
 		}

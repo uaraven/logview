@@ -88,9 +88,10 @@ func main() {
 	current := start
 
 	for i, line := range lines {
+		level := logv.LogLevel(rand.Int31n(3))
 		event := &logv.LogEvent{
 			EventID:   strconv.Itoa(i),
-			Level:     logv.LogLevelInfo,
+			Level:     level,
 			Message:   line,
 			Source:    "S " + strconv.Itoa(i),
 			Timestamp: current,

@@ -25,7 +25,7 @@ LogView supports:
 - [x] keyboard and mouse scrolling (mouse not working for unknown reason)
 - [x] selection of log event
 - [ ] merging of continuation events
-- [ ] velocity histogram
+- [x] velocity histogram
 
 
 ## Performance notes
@@ -41,3 +41,9 @@ of highlights for all the log events call `LogView.RefreshHighlighs()` method.
 
 Changes to any of the highlights or default Log view style would require recalculation. Changes to the background colour of
 current event or error and warning level events do not require recalculation.
+
+
+## LogVelocityView Widget
+
+Log velocity widget displays bar chart of number of log events per time period. Widget can show count for all events or
+only events of the certain level.

@@ -52,7 +52,7 @@ func NewLogVelocityView(bucketWidth time.Duration) *LogVelocityView {
 		warnBuckets:  make(map[int64]int),
 		errorBuckets: make(map[int64]int),
 		defaultStyle: tcell.StyleDefault.Foreground(cview.Styles.PrimaryTextColor).Background(tcell.Color239),
-		errorColor:   tcell.ColorDimGray,
+		errorColor:   tcell.ColorIndianRed,
 		warningColor: tcell.ColorSaddleBrown,
 		showLogLevel: LogLevelAll,
 		anchor:       nil,
@@ -81,6 +81,32 @@ func (lh *LogVelocityView) AppendLogEvent(event *LogEvent) {
 	} else {
 		b[key] = 1
 	}
+}
+
+// SetShowLogLevel sets the log level of events that should be displayed in the velocity view
+//
+// Supported values are:
+//
+//  - LogLevelInfo - show all events but warning and errors
+//
+//	- LogLevelWarning
+//
+//  - LogLevelError
+//
+//  - LogLevelAll - show all events
+func (lh *LogVelocityView) SetShowLogLevel(logLevel LogLevel) {
+	lh.Lock()
+	defer lh.Unlock()
+
+	lh.showLogLevel = logLevel
+}
+
+// GetShowLogLevel returns the log level of events that are be displayed in the velocity view
+func (lh *LogVelocityView) GetShowLogLevel() LogLevel {
+	lh.RLock()
+	defer lh.RUnlock()
+
+	return lh.showLogLevel
 }
 
 // Draw draws this primitive onto the screen.
