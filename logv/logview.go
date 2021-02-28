@@ -166,6 +166,18 @@ func NewLogView() *LogView {
 	return logView
 }
 
+// SetEventLimit sets the limit to number of log event held by log view.
+//
+// To disable limit set it to zero.
+func (lv *LogView) SetEventLimit(limit uint) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.eventLimit = limit
+
+	lv.ensureEventLimit()
+}
+
 // InvalidateHighlights forces recalculation of highlight patterns for all events in the log view.
 // LogView calculates highlight spans once for each event when the event is appended. Any changes in highlighting
 // will not be applied to the events that are already in the log view.
@@ -369,6 +381,14 @@ func (lv *LogView) SetFollowing(follow bool) {
 	}
 }
 
+// EventCount returns the number of log events in the log view
+func (lv *LogView) EventCount() uint {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.eventCount
+}
+
 // *******************************
 // internal implementation details
 
@@ -392,10 +412,11 @@ func (lv *LogView) append(logEvent *LogEvent) {
 	lv.calculateWrap(event)
 
 	lv.eventCount += event.lineCount
+	lv.ensureEventLimit()
 
 	// if we're in following mode and have enough events to fill the page then update the top position
 	if lv.following && lv.eventCount > uint(lv.pageHeight) {
-		lv.top = lv.atOffset(lv.top, int(event.lineCount))
+		lv.top = lv.atOffset(lv.lastEvent, -lv.pageHeight)
 	}
 }
 
@@ -591,6 +612,24 @@ func (lv *LogView) insertAfter(node *logEventLine, new *logEventLine) *logEventL
 	return new
 }
 
+func (lv *LogView) deleteEvent(event *logEventLine) {
+	if event.next != nil {
+		event.next.previous = event.previous
+	}
+	if event.previous != nil {
+		event.previous.next = event.next
+	}
+	if event == lv.firstEvent {
+		lv.firstEvent = event.next
+	}
+	if event == lv.lastEvent {
+		lv.lastEvent = event.previous
+	}
+	if event == lv.top {
+		lv.top = event.previous
+	}
+}
+
 // unwrapLines removes all wrap lines
 func (lv *LogView) unwrapLines() {
 	event := lv.firstEvent
@@ -671,4 +710,13 @@ func (lv *LogView) printLogLineNoHighlights(screen tcell.Screen, x int, y int, e
 
 func (lv *LogView) updateDefaultStyle() {
 	lv.defaultStyle = tcell.StyleDefault.Foreground(lv.textColor).Background(lv.backgroundColor)
+}
+
+func (lv *LogView) ensureEventLimit() {
+	if lv.eventLimit == 0 {
+		return
+	}
+	for lv.eventCount > lv.eventLimit {
+		lv.deleteEvent(lv.firstEvent)
+	}
 }
