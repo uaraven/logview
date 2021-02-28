@@ -106,8 +106,7 @@ type OnCurrentChanged func(current *LogEvent)
 
 // LogView is a Box that displays log events
 //
-// LogView doesn't have border or scrollviews to allow easier copy-paste of events
-// Events can be appended to a LogView
+// LogView doesn't have border or scroll bars to allow easier copy-paste of events.
 type LogView struct {
 	*cview.Box
 
@@ -183,6 +182,24 @@ func NewLogView() *LogView {
 	return logView
 }
 
+// SetMaxEvents sets a maximum number of events that log view will hold
+func (lv *LogView) SetMaxEvents(limit uint) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.eventLimit = limit
+	lv.ensureEventLimit()
+}
+
+// GetMaxEvents returns a maximum number of events that log view will hold
+func (lv *LogView) GetMaxEvents() uint {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.eventLimit
+}
+
+// SetLineWrap enables/disables the line wrap. Disabling line wrap may increase performance
 func (lv *LogView) SetLineWrap(enabled bool) {
 	lv.Lock()
 	defer lv.Unlock()
@@ -193,6 +210,7 @@ func (lv *LogView) SetLineWrap(enabled bool) {
 	lv.wrap = enabled
 }
 
+// IsLineWrapEnabled returns the current status of line wrap
 func (lv *LogView) IsLineWrapEnabled() bool {
 	lv.RLock()
 	defer lv.RUnlock()
@@ -791,6 +809,7 @@ func (lv *LogView) calculateWrap(event *logEventLine) *logEventLine {
 		}
 		currentLine = lv.insertAfter(currentLine, nextLine)
 	}
+	lv.eventCount += event.lineCount
 	return currentLine
 }
 
@@ -813,6 +832,8 @@ func (lv *LogView) mergeWrappedLines(event *logEventLine) *logEventLine {
 	event = findFirstWrappedLine(event)
 	event.order = 0
 	event.start = 0
+	lv.eventCount -= event.lineCount
+	event.lineCount = 1
 	event.end = len(event.Message)
 	next := event.next
 	for next.next != nil && next.next.order > 1 { // find event with order <= 1, that will be
@@ -926,6 +947,9 @@ func (lv *LogView) insertAfter(node *logEventLine, new *logEventLine) *logEventL
 }
 
 func (lv *LogView) deleteEvent(event *logEventLine) {
+	if event == nil {
+		return
+	}
 	if event.next != nil {
 		event.next.previous = event.previous
 	}
@@ -941,6 +965,7 @@ func (lv *LogView) deleteEvent(event *logEventLine) {
 	if event == lv.top {
 		lv.top = event.previous
 	}
+	lv.eventCount--
 }
 
 // unwrapLines removes all wrap lines
@@ -1117,7 +1142,7 @@ func (lv *LogView) ensureEventLimit() {
 		return
 	}
 	for lv.eventCount > lv.eventLimit {
-		if lv.firstEvent.order > 0 {
+		if lv.firstEvent != nil && lv.firstEvent.order > 0 {
 			lv.mergeWrappedLines(lv.firstEvent)
 		}
 		lv.deleteEvent(lv.firstEvent)

@@ -16,7 +16,7 @@ LogView operates on LogEvent structures, not on text lines, this allows keeping 
 LogView supports:
 
 - [x] tailing logs
-- [x] limiting the number of log events stored in logview
+- [x] limiting the number of log events stored in log view
 - [x] highlighting error/warning events (with customizable colors)
 - [x] custom highlighting of parts of log messages
 - [x] scrolling to event id

@@ -81,6 +81,42 @@ func TestLogView_ScrollToBottom(t *testing.T) {
 	}
 }
 
+func TestLogView_SetMaxEvents(t *testing.T) {
+	lv := NewLogView()
+	lv.SetMaxEvents(10)
+	ts := time.Now().Add(-24 * time.Hour)
+	lv.AppendEvents(randomEvents(100, ts))
+
+	if lv.firstEvent.EventID != "e90" && lv.EventCount() != 10 {
+		t.Errorf("Failed to limit max events, eventCount=%d, should be 10", lv.EventCount())
+	}
+}
+
+func TestLogView_SetMaxEventsAfter(t *testing.T) {
+	lv := NewLogView()
+	ts := time.Now().Add(-24 * time.Hour)
+	lv.AppendEvents(randomEvents(100, ts))
+
+	lv.SetMaxEvents(10)
+
+	if lv.firstEvent.EventID != "e90" && lv.EventCount() != 10 {
+		t.Errorf("Failed to limit max events, eventCount=%d, should be 10", lv.EventCount())
+	}
+}
+
+func TestLogView_Highlighting(t *testing.T) {
+	lv := NewLogView()
+	lv.SetHighlightPattern(`(?P<ts>\d{2}:\d{2}:\d{2}.\d{3})\s+\[(?P<thread>.*)\]\s+(?P<level>\S+)\s+(?P<class>[a-zA-Z0-9_.]+).*(?:in (?P<elapsed>\d+)ms)?`)
+	ts := time.Now().Add(-24 * time.Hour)
+	lv.AppendEvents(randomEvents(100, ts))
+
+	lv.SetMaxEvents(10)
+
+	if lv.firstEvent.EventID != "e90" && lv.EventCount() != 10 {
+		t.Errorf("Failed to limit max events, eventCount=%d, should be 10", lv.EventCount())
+	}
+}
+
 func BenchmarkLogView(b *testing.B) {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	lv := NewLogView()
