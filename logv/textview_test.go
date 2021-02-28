@@ -12,7 +12,7 @@ func BenchmarkTextView(b *testing.B) {
 	lv := cview.NewTextView()
 
 	for n := 0; n < b.N; n++ {
-		for _, s := range randomBenchStrings(40) {
+		for _, s := range randomBenchStrings(50) {
 			_, err := lv.Write([]byte(s))
 			if err != nil {
 				panic(err)

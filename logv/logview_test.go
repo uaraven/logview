@@ -59,7 +59,7 @@ func BenchmarkLogView(b *testing.B) {
 
 	ts := time.Now().Add(-24 * time.Hour)
 	for n := 0; n < b.N; n++ {
-		lv.AppendEvents(randomBenchEvents(5000, ts))
+		lv.AppendEvents(randomBenchEvents(50, ts))
 		lv.Draw(screen)
 	}
 }
