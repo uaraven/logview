@@ -24,11 +24,10 @@ LogView supports:
  - [x] limiting the number of log events stored in logview
  - [x] highlighting error/warning events (with customizable colors)
  - [x] custom highlighting of parts of log messages
- - [ ] scrolling to event id
- - [ ] scrolling to timestamp  
+ - [x] scrolling to event id
+ - [x] scrolling to timestamp  
  - [ ] optional display of log event source and timestamp separately from main message
- - [ ] keyboard and mouse scrolling
- - [ ] selection of log event
- - [ ] Custom header  
+ - [x] keyboard and mouse scrolling (mouse not working for unknown reason)
+ - [x] selection of log event
  - [ ] velocity histogram
  

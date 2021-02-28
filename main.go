@@ -4,7 +4,10 @@ import (
 	"githib.com/uaraven/logview/logv"
 	"github.com/gdamore/tcell/v2"
 	"gitlab.com/tslocum/cview"
+	"io/ioutil"
 	"log"
+	"strconv"
+	"strings"
 )
 
 type UI struct {
@@ -72,27 +75,28 @@ func main() {
 	ui.logView.SetHighlightColor("elapsed", tcell.ColorGreenYellow, tcell.ColorDarkKhaki)
 	ui.logView.SetHighlighting(true)
 	ui.logView.SetLevelHighlighting(true)
+	ui.logView.SetHighlightCurrentEvent(true)
 
-	//content, err := ioutil.ReadFile("test.log")
-	//
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//
-	//lines := strings.Split(string(content), "\n")
-	//
-	//for i, line := range lines {
-	//	event := &logv.LogEvent{
-	//		EventID: strconv.Itoa(i),
-	//		Level:   logv.LogLevelInfo,
-	//		Message: line,
-	//	}
-	//	ui.logView.AppendLogEvent(event)
-	//}
+	content, err := ioutil.ReadFile("test.log")
 
-	event := logv.NewLogEvent("1", "20:17:51.894 [sqsTaskExecutor-10] ERROR  c.s.d.l.s.s.CopyrightDetectionService - This is the extra long line which originally said just this text that follows: Stored copyright data for pkg:npm/%40mpen/rollup-plugin-clean@0.1.8?checksum=sha1:097f0110bbc8aa5bc1026f2d689f45dcf98fcbc5&sonatype_repository=npmjs.org&type=tgz")
-	event.Level = logv.LogLevelWarning
-	ui.logView.AppendLogEvent(event)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	lines := strings.Split(string(content), "\n")
+
+	for i, line := range lines {
+		event := &logv.LogEvent{
+			EventID: strconv.Itoa(i),
+			Level:   logv.LogLevelInfo,
+			Message: line,
+		}
+		ui.logView.AppendLogEvent(event)
+	}
+
+	//event := logv.NewLogEvent("1", "20:17:51.894 [sqsTaskExecutor-10] ERROR  c.s.d.l.s.s.CopyrightDetectionService - This is the extra long line which originally said just this text that follows: Stored copyright data for pkg:npm/%40mpen/rollup-plugin-clean@0.1.8?checksum=sha1:097f0110bbc8aa5bc1026f2d689f45dcf98fcbc5&sonatype_repository=npmjs.org&type=tgz")
+	//event.Level = logv.LogLevelWarning
+	//ui.logView.AppendLogEvent(event)
 
 	ui.Run()
 }

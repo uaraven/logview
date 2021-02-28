@@ -101,6 +101,8 @@ func (e *logEventLine) copy() *logEventLine {
 	return eventCopy
 }
 
+type OnCurrentChanged func(current *LogEvent)
+
 // LogView is a Box that displays log events
 //
 // LogView doesn't have border or scrollviews to allow easier copy-paste of events
@@ -111,20 +113,24 @@ type LogView struct {
 	firstEvent *logEventLine
 	lastEvent  *logEventLine
 	top        *logEventLine
+	current    *logEventLine
 	eventCount uint
 	eventLimit uint
 
 	highlightingEnabled bool
+	highlightPattern    *regexp.Regexp
 	highlightColors     map[string]tcell.Style
 
 	highlightLevels bool
 	warningBgColor  tcell.Color
 	errorBgColor    tcell.Color
 
+	highlightCurrent bool
+	currentBgColor   tcell.Color
+
 	// as new events are appended, older events are scrolled up, like tail -f
 	following bool
 
-	showHeader      bool
 	showSource      bool
 	showTimestamp   bool
 	timestampFormat string
@@ -134,12 +140,13 @@ type LogView struct {
 	backgroundColor tcell.Color
 	defaultStyle    tcell.Style
 
-	highlightPattern *regexp.Regexp
-
 	hasFocus bool
 
 	lastWidth, lastHeight int
 	pageHeight, pageWidth int
+	screenCoords          []int
+
+	onCurrentChanged OnCurrentChanged
 
 	sync.RWMutex
 }
@@ -148,7 +155,6 @@ type LogView struct {
 func NewLogView() *LogView {
 	logView := &LogView{
 		Box:                 cview.NewBox(),
-		showHeader:          false,
 		showSource:          false,
 		showTimestamp:       false,
 		timestampFormat:     "15:04:05.000",
@@ -157,9 +163,11 @@ func NewLogView() *LogView {
 		highlightingEnabled: true,
 		textColor:           cview.Styles.PrimaryTextColor,
 		backgroundColor:     cview.Styles.PrimitiveBackgroundColor,
+		currentBgColor:      tcell.ColorDimGray,
 		warningBgColor:      tcell.ColorSaddleBrown,
 		errorBgColor:        tcell.ColorIndianRed,
 		highlightColors:     make(map[string]tcell.Style),
+		screenCoords:        make([]int, 2),
 	}
 	logView.Box.SetBorder(false)
 	logView.updateDefaultStyle()
@@ -272,6 +280,21 @@ func (lv *LogView) SetLevelHighlighting(enabled bool) {
 	lv.highlightLevels = enabled
 }
 
+// SetHighlightCurrentEvent enables background color highlighting for currently selected event
+func (lv *LogView) SetHighlightCurrentEvent(enabled bool) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.highlightCurrent = enabled
+}
+
+func (lv *LogView) GetCurrentEvent() *LogEvent {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.current.LogEvent
+}
+
 // SetBorder does nothing
 func (lv *LogView) SetBorder(show bool) {
 	// do nothing
@@ -312,6 +335,8 @@ func (lv *LogView) Draw(screen tcell.Screen) {
 	if height == 0 {
 		return
 	}
+	lv.screenCoords[0] = x
+	lv.screenCoords[1] = y
 
 	lv.pageHeight = height
 	lv.pageWidth = width
@@ -325,10 +350,6 @@ func (lv *LogView) Draw(screen tcell.Screen) {
 	lv.lastWidth, lv.lastHeight = width, height
 
 	line := y
-	if lv.showHeader {
-		lv.pageHeight--
-		line = lv.drawHeader(screen, x, line)
-	}
 
 	top := lv.top
 	for top != nil && line < y+height {
@@ -367,6 +388,16 @@ func (lv *LogView) ScrollToBottom() {
 	lv.scrollToEnd()
 }
 
+// ScrollToTop scrolls the log view to the first event
+//
+// This does not automatically enables following. User SetFollowing function to enable it
+func (lv *LogView) ScrollToTop() {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.scrollToStart()
+}
+
 // SetFollowing enables/disables following mode. Following mode automatically scrolls log view up
 // as new events are appended. Last event is always in the view
 //
@@ -389,11 +420,136 @@ func (lv *LogView) EventCount() uint {
 	return lv.eventCount
 }
 
+// IsFollowing returns whether the following mode is enabled. Following mode automatically scrolls log view up
+// as new events are appended. Last event is always in the view.
+func (lv *LogView) IsFollowing() bool {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.following
+}
+
+// ScrollToTimestamp scrolls to the first event with a timestamp equal to or greater than given.
+// If no event satisfies that condition it will not scroll and return false.
+//
+// Current event will be updated to the found event
+func (lv *LogView) ScrollToTimestamp(timestamp time.Time) bool {
+	lv.Lock()
+	defer lv.Unlock()
+
+	event := lv.firstEvent
+	for event != nil && event.Timestamp.Before(timestamp) {
+		event = event.next
+	}
+	if event == nil {
+		return false
+	}
+	lv.top = event
+	lv.adjustTop()
+	lv.setCurrent(event)
+	return true
+}
+
+// ScrollToEventID scrolls to the first event with a matching eventID
+// If no such event is found it will not scroll and return false.
+//
+// Current event will be updated to the found event
+func (lv *LogView) ScrollToEventID(eventID string) bool {
+	lv.Lock()
+	defer lv.Unlock()
+
+	event := lv.firstEvent
+	for event.EventID != eventID && event != nil {
+		event = event.next
+	}
+	if event == nil {
+		return false
+	}
+	lv.top = event
+	lv.adjustTop()
+	lv.setCurrent(event)
+	return true
+}
+
+// InputHandler returns the handler for this primitive.
+func (lv *LogView) InputHandler() func(event *tcell.EventKey, setFocus func(p cview.Primitive)) {
+	return lv.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p cview.Primitive)) {
+		//key := event.Key()
+
+		//if cview.HitShortcut(event, cview.Keys.Cancel, cview.Keys.Select, cview.Keys.Select2, cview.Keys.MovePreviousField, cview.Keys.MoveNextField) {
+		//	if lv.done != nil {
+		//		lv.done(key)
+		//	}
+		//	return
+		//}
+
+		lv.Lock()
+		defer lv.Unlock()
+
+		if cview.HitShortcut(event, cview.Keys.MoveFirst, cview.Keys.MoveFirst2) {
+			lv.scrollToStart()
+		} else if cview.HitShortcut(event, cview.Keys.MoveLast, cview.Keys.MoveLast2) {
+			lv.scrollToEnd()
+		} else if cview.HitShortcut(event, cview.Keys.MoveUp, cview.Keys.MoveUp2) {
+			lv.scrollOneUp()
+		} else if cview.HitShortcut(event, cview.Keys.MoveDown, cview.Keys.MoveDown2) {
+			lv.scrollOneDown()
+		} else if cview.HitShortcut(event, cview.Keys.MovePreviousPage) {
+			lv.scrollPageUp()
+		} else if cview.HitShortcut(event, cview.Keys.MoveNextPage) {
+			lv.scrollPageDown()
+		}
+	})
+}
+
+// MouseHandler returns the mouse handler for this primitive.
+func (lv *LogView) MouseHandler() func(action cview.MouseAction, event *tcell.EventMouse, setFocus func(p cview.Primitive)) (consumed bool, capture cview.Primitive) {
+	return lv.WrapMouseHandler(func(action cview.MouseAction, event *tcell.EventMouse, setFocus func(p cview.Primitive)) (consumed bool, capture cview.Primitive) {
+		x, y := event.Position()
+		if !lv.InRect(x, y) {
+			return false, nil
+		}
+
+		lv.Lock()
+		defer lv.Unlock()
+
+		switch action {
+		case cview.MouseLeftClick:
+			localY := y + lv.screenCoords[1]
+			lv.setCurrent(lv.atOffset(lv.top, localY))
+			consumed = true
+			setFocus(lv)
+		case cview.MouseScrollUp:
+			lv.scrollPageUp()
+			consumed = true
+		case cview.MouseScrollDown:
+			lv.scrollPageDown()
+			consumed = true
+		}
+
+		return
+	})
+}
+
+// SetOnCurrentChange sets a listener that will be called every time the current event is changed
+//
+// If current event highlighting is disabled, listener will not be called.
+func (lv *LogView) SetOnCurrentChange(listener OnCurrentChanged) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.onCurrentChanged = listener
+}
+
 // *******************************
 // internal implementation details
 
-func (lv *LogView) scrollToEnd() {
-	lv.top = lv.atOffset(lv.lastEvent, -(lv.pageHeight - 1))
+func (lv *LogView) setCurrent(newCurrent *logEventLine) {
+	lv.current = newCurrent
+
+	if lv.onCurrentChanged != nil && lv.highlightCurrent {
+		lv.onCurrentChanged(lv.current.LogEvent)
+	}
 }
 
 func (lv *LogView) append(logEvent *LogEvent) {
@@ -417,6 +573,7 @@ func (lv *LogView) append(logEvent *LogEvent) {
 	// if we're in following mode and have enough events to fill the page then update the top position
 	if lv.following && lv.eventCount > uint(lv.pageHeight) {
 		lv.top = lv.atOffset(lv.lastEvent, -lv.pageHeight)
+		lv.setCurrent(event)
 	}
 }
 
@@ -598,6 +755,7 @@ func (lv *LogView) insertAfter(node *logEventLine, new *logEventLine) *logEventL
 		lv.firstEvent = new
 		lv.lastEvent = new
 		lv.top = new
+		lv.setCurrent(new)
 	} else {
 		new.previous = node
 		new.next = node.next
@@ -634,7 +792,11 @@ func (lv *LogView) deleteEvent(event *logEventLine) {
 func (lv *LogView) unwrapLines() {
 	event := lv.firstEvent
 	for event != nil {
+		isTop := event == lv.top
 		event = lv.deleteWrapLines(event)
+		if isTop {
+			lv.top = event
+		}
 		event = event.next
 	}
 }
@@ -653,13 +815,13 @@ func (lv *LogView) recolorizeLines() {
 func (lv *LogView) rewrapLines() {
 	event := lv.firstEvent
 	for event != nil {
+		isTop := event == lv.top
 		event = lv.calculateWrap(event)
+		if isTop {
+			lv.top = event
+		}
 		event = event.next
 	}
-}
-
-func (lv *LogView) drawHeader(screen tcell.Screen, x int, y int) int {
-	return y
 }
 
 // drawEvent draws single event on a single line
@@ -688,7 +850,11 @@ func (lv *LogView) printLogLine(screen tcell.Screen, x int, y int, event *logEve
 	textPos := event.start
 	i := x
 	for textPos < event.end {
-		screen.SetCell(i, y, event.styleSpans[spanIndex].style, rune(event.Message[textPos]))
+		style := event.styleSpans[spanIndex].style
+		if lv.highlightCurrent && event == lv.current { // overwrite bg color for current selected event
+			style = style.Background(lv.currentBgColor)
+		}
+		screen.SetCell(i, y, style, rune(event.Message[textPos]))
 		i++
 		textPos++
 		if textPos > event.styleSpans[spanIndex].end {
@@ -699,8 +865,12 @@ func (lv *LogView) printLogLine(screen tcell.Screen, x int, y int, event *logEve
 
 func (lv *LogView) printLogLineNoHighlights(screen tcell.Screen, x int, y int, event *logEventLine) {
 	i := x
+	style := lv.defaultStyle
+	if lv.highlightCurrent && event == lv.current { // overwrite bg color for current selected event
+		style = style.Background(lv.currentBgColor)
+	}
 	for pos := event.start; pos < event.end; pos++ {
-		screen.SetCell(i, y, lv.defaultStyle, rune(event.Message[pos]))
+		screen.SetCell(i, y, style, rune(event.Message[pos]))
 		i++
 		if i >= lv.pageWidth {
 			break
@@ -719,4 +889,75 @@ func (lv *LogView) ensureEventLimit() {
 	for lv.eventCount > lv.eventLimit {
 		lv.deleteEvent(lv.firstEvent)
 	}
+}
+
+func (lv *LogView) scrollToStart() {
+	lv.top = lv.firstEvent
+	lv.setCurrent(lv.firstEvent)
+	lv.following = false
+}
+
+func (lv *LogView) scrollToEnd() {
+	lv.top = lv.atOffset(lv.lastEvent, -(lv.pageHeight - 1))
+	lv.setCurrent(lv.lastEvent)
+	lv.following = true
+}
+
+func (lv *LogView) scrollOneUp() {
+	lv.following = false
+	// if we're at the top of page or current highlighting is off then change the top
+	if lv.current == lv.top || !lv.highlightCurrent {
+		lv.top = lv.atOffset(lv.top, -1)
+	}
+	lv.setCurrent(lv.atOffset(lv.current, -1))
+}
+
+func (lv *LogView) scrollOneDown() {
+	if lv.current == lv.lastEvent {
+		lv.following = true
+		return
+	}
+	lv.setCurrent(lv.atOffset(lv.current, 1))
+	// if we're past end of page or current highlighting is off then change the top
+
+	lv.following = false
+}
+
+func (lv *LogView) adjustTop() {
+	if lv.distance(lv.current, lv.top) >= lv.pageHeight || !lv.highlightCurrent {
+		lv.top = lv.atOffset(lv.top, 1)
+	}
+}
+
+func (lv *LogView) scrollPageUp() {
+	lv.top = lv.atOffset(lv.top, -lv.pageHeight)
+	lv.setCurrent(lv.atOffset(lv.current, -lv.pageHeight))
+	lv.following = false
+}
+
+func (lv *LogView) scrollPageDown() {
+	lv.top = lv.atOffset(lv.top, lv.pageHeight)
+	lv.setCurrent(lv.atOffset(lv.current, lv.pageHeight))
+	if lv.current == lv.lastEvent {
+		lv.following = true
+		lv.top = lv.atOffset(lv.lastEvent, -(lv.pageHeight - 1))
+	} else {
+		lv.following = false
+	}
+}
+
+func (lv *LogView) distance(start *logEventLine, target *logEventLine) int {
+	limit := lv.pageHeight
+	distance := 0
+	event := start
+	for limit > 0 {
+		if event != target {
+			event = event.previous
+		} else {
+			return distance
+		}
+		distance++
+		limit--
+	}
+	return distance
 }
