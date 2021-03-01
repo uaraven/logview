@@ -1,4 +1,4 @@
-package logv
+package main
 
 import (
 	"fmt"
@@ -286,11 +286,11 @@ func (lh *LogVelocityView) drawTimeAxis(screen tcell.Screen, x int, y int, width
 func (lh *LogVelocityView) drawValueAxis(screen tcell.Screen, x int, y int, maxValue int) (int, int) {
 	valueS := formatValue(maxValue)
 	printString(screen, x, y, valueS, lh.defaultStyle)
-	printString(screen, x+4, y, " ┌", lh.defaultStyle)
+	printString(screen, x+4, y, " ┬", lh.defaultStyle)
 	for j := y + 1; j < y+lh.height-1; j++ {
 		printString(screen, x, j, "     │", lh.defaultStyle)
 	}
-	printString(screen, x, y+lh.height-1, "   0 └", lh.defaultStyle)
+	printString(screen, x, y+lh.height-1, "   0 ┴", lh.defaultStyle)
 	return x + 6, lh.width - 6
 }
 

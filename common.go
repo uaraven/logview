@@ -1,4 +1,4 @@
-package logv
+package main
 
 import (
 	"fmt"

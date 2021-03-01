@@ -49,3 +49,5 @@ current event or error and warning level events do not require recalculation.
 
 Log velocity widget displays bar chart of number of log events per time period. Widget can show count for all events or
 only events of the certain level.
+
+Note. Many fonts will have weird line gaps in the block characters. Hack is one of the best in this regard.
