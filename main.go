@@ -97,7 +97,7 @@ func main() {
 
 	lastTime := time.Date(2000, 1, 1, 1, 1, 1, 1, time.Local)
 	for i, line := range lines {
-		if len(strings.TrimSpace(line)) > 0 && rand.Float64() < 0.4 {
+		if len(strings.TrimSpace(line)) > 0 && rand.Float64() < 0.4 || len(line) > 100 {
 			st := status.FindString(line)
 			date := dtparse.FindStringSubmatch(line)
 			dt, err := dateparse.ParseLocal(date[1])
@@ -110,7 +110,6 @@ func main() {
 			} else if st == "503" {
 				level = LogLevelError
 			}
-			//level := logv.LogLevel(rand.Int31n(3))
 			event := &LogEvent{
 				EventID:   strconv.Itoa(i),
 				Level:     level,

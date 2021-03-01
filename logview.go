@@ -56,6 +56,7 @@ func (e *logEventLine) copy() *logEventLine {
 	return eventCopy
 }
 
+// OnCurrentChanged is an event time that is fired when current log event is changed
 type OnCurrentChanged func(current *LogEvent)
 
 // LogView is a Box that displays log events
@@ -413,6 +414,26 @@ func (lv *LogView) AppendEvents(events []*LogEvent) {
 	}
 }
 
+// ScrollPageDown scrolls the log view one screen down
+//
+// This will enable autofollowing if the last line has been reached
+func (lv *LogView) ScrollPageDown() {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.scrollPageDown()
+}
+
+// ScrollPageUp scrolls the log view one screen up
+//
+// This does not disables following.
+func (lv *LogView) ScrollPageUp() {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.scrollPageUp()
+}
+
 // ScrollToBottom scrolls the log view to the last event
 //
 // This does not automatically enables following. User SetFollowing function to enable it
@@ -613,20 +634,20 @@ func (lv *LogView) MouseHandler() func(action cview.MouseAction, event *tcell.Ev
 			return false, nil
 		}
 
-		lv.Lock()
-		defer lv.Unlock()
-
 		switch action {
 		case cview.MouseLeftClick:
-			localY := y + lv.screenCoords[1]
-			lv.setCurrent(lv.atOffset(lv.top, localY))
 			consumed = true
 			setFocus(lv)
+
+			lv.Lock()
+			defer lv.Unlock()
+			localY := y - lv.screenCoords[1]
+			lv.setCurrent(lv.atOffset(lv.top, localY))
 		case cview.MouseScrollUp:
-			lv.scrollPageUp()
+			lv.ScrollPageUp()
 			consumed = true
 		case cview.MouseScrollDown:
-			lv.scrollPageDown()
+			lv.ScrollPageDown()
 			consumed = true
 		}
 
@@ -1025,8 +1046,9 @@ func (lv *LogView) printLogLine(screen tcell.Screen, x int, y int, event *logEve
 	}
 	textPos := event.start
 	i := x
+	var style tcell.Style
 	for textPos < event.end {
-		style := event.styleSpans[spanIndex].style
+		style = event.styleSpans[spanIndex].style
 		if lv.highlightCurrent && event == lv.current { // overwrite bg color for current selected event
 			style = style.Background(lv.currentBgColor)
 		}
@@ -1037,8 +1059,7 @@ func (lv *LogView) printLogLine(screen tcell.Screen, x int, y int, event *logEve
 			spanIndex++
 		}
 	}
-	style := lv.defaultStyle.Background(lv.currentBgColor)
-	if i < lv.pageWidth && lv.highlightCurrent && event == lv.current {
+	if i < x+lv.pageWidth {
 		for i < x+lv.pageWidth {
 			screen.SetCell(i, y, style, ' ')
 			i++
@@ -1059,7 +1080,7 @@ func (lv *LogView) printLogLineNoHighlights(screen tcell.Screen, x int, y int, e
 			break
 		}
 	}
-	if i < lv.pageWidth && lv.highlightCurrent && event == lv.current {
+	if i < x+lv.pageWidth && lv.highlightCurrent && event == lv.current {
 		for i < x+lv.pageWidth {
 			screen.SetCell(i, y, style, ' ')
 			i++
