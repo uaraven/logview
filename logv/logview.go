@@ -204,22 +204,6 @@ func (lv *LogView) SetCurrentBgColor(color tcell.Color) {
 	lv.currentBgColor = color
 }
 
-// SetWarningBgColor sets the background color to highlight events with LogLevelWarning level
-func (lv *LogView) SetWarningBgColor(color tcell.Color) {
-	lv.Lock()
-	defer lv.Unlock()
-
-	lv.warningBgColor = color
-}
-
-// SetErrorBgColor sets the background color to highlight events with LogLevelError level
-func (lv *LogView) SetErrorBgColor(color tcell.Color) {
-	lv.Lock()
-	defer lv.Unlock()
-
-	lv.errorBgColor = color
-}
-
 // SetEventLimit sets the limit to number of log event held by log view.
 //
 // To disable limit set it to zero.
@@ -299,7 +283,7 @@ func (lv *LogView) SetHighlightColor(group string, foreground tcell.Color, backg
 //
 // Changing warning color will do nothing to the events that are already in the log view. To update
 // highlighting of all events use RefreshHighlights. Be warned: this is an expensive operation
-func (lv *LogView) SetWarningColor(bgColor tcell.Color) {
+func (lv *LogView) SetWarningBgColor(bgColor tcell.Color) {
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -311,7 +295,7 @@ func (lv *LogView) SetWarningColor(bgColor tcell.Color) {
 //
 // Changing error color will do nothing to the events that are already in the log view. To update
 // highlighting of all events use RefreshHighlights. Be warned: this is an expensive operation
-func (lv *LogView) SetErrorColor(bgColor tcell.Color) {
+func (lv *LogView) SetErrorBgColor(bgColor tcell.Color) {
 	lv.Lock()
 	defer lv.Unlock()
 

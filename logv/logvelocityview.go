@@ -109,6 +109,35 @@ func (lh *LogVelocityView) GetShowLogLevel() LogLevel {
 	return lh.showLogLevel
 }
 
+// SetAnchor sets the max time for the time axis
+func (lh *LogVelocityView) SetAnchor(newAnchor time.Time) {
+	lh.Lock()
+	defer lh.Unlock()
+
+	a := newAnchor.Unix()
+	lh.anchor = &a
+}
+
+// ClearAnchor removes the max time for the time axis. Max time will be equal to the current time
+func (lh *LogVelocityView) ClearAnchor() {
+	lh.Lock()
+	defer lh.Unlock()
+
+	lh.anchor = nil
+}
+
+func (lh *LogVelocityView) GetAnchor() *time.Time {
+	lh.RLock()
+	defer lh.RUnlock()
+
+	if lh.anchor == nil {
+		return nil
+	} else {
+		result := time.Unix(*lh.anchor, 0)
+		return &result
+	}
+}
+
 // Draw draws this primitive onto the screen.
 func (lh *LogVelocityView) Draw(screen tcell.Screen) {
 	if !lh.GetVisible() {
@@ -234,8 +263,13 @@ func (lh *LogVelocityView) drawTimeAxis(screen tcell.Screen, x int, y int, width
 	}
 	i := width - 1
 	yp := y + height - 1
+	var dur string
 	for i >= 0 {
-		dur := "-" + durationToString(key-current)
+		if lh.anchor != nil && i == width-1 {
+			dur = time.Unix(*lh.anchor, 0).Format(time.Kitchen)
+		} else {
+			dur = "-" + durationToString(key-current)
+		}
 		i -= len(dur)
 		if i <= 0 {
 			break
@@ -278,7 +312,6 @@ func (lh *LogVelocityView) timeAnchor() int64 {
 		return *lh.anchor / lh.bucketWidth
 	}
 }
-
 func durationToString(d int64) string {
 	minutes := d / 60
 	seconds := d % 60

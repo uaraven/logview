@@ -2,6 +2,8 @@
 
 LogView widget for [cview](https://gitlab.com/tslocum/cview). Might also work with [tview](https://github.com/rivo/tview) although that was not tested.
 
+![](screen.png)
+
 ## Rationale
 
 cview/tview TextView widget tries to recalculate highlighting and wrapping on every new line appended to the widget. Batch appends helps a little, but I was not able to achieve acceptable performance even when the line count in TextView's buffer was set to as little as 500.
