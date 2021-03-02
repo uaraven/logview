@@ -26,7 +26,7 @@ LogView supports:
 - [x] optional display of log event source and timestamp separately from main message
 - [x] keyboard and mouse scrolling (mouse not working for unknown reason)
 - [x] selection of log event
-- [ ] merging of continuation events
+- [x] merging of continuation events
 - [x] velocity histogram
 
 

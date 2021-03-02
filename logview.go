@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,8 +34,9 @@ type logEventLine struct {
 	// order indicate whether the single log event is split over multiple lines because of wrapping
 	// if the event is not split, then order will be 0
 	// otherwise the first line will have the order value of 1, the next line is 2 and so on
-	order     int
-	lineCount uint
+	order         int
+	lineCount     uint
+	newLinesCount int
 }
 
 func (e logEventLine) getLineCount() uint {
@@ -43,15 +45,16 @@ func (e logEventLine) getLineCount() uint {
 
 func (e *logEventLine) copy() *logEventLine {
 	eventCopy := &logEventLine{
-		LogEvent:   e.LogEvent,
-		lineID:     e.lineID,
-		previous:   e.previous,
-		next:       e.next,
-		styleSpans: e.styleSpans,
-		start:      e.start,
-		end:        e.end,
-		order:      e.order,
-		lineCount:  e.lineCount,
+		LogEvent:      e.LogEvent,
+		lineID:        e.lineID,
+		previous:      e.previous,
+		next:          e.next,
+		styleSpans:    e.styleSpans,
+		start:         e.start,
+		end:           e.end,
+		order:         e.order,
+		lineCount:     e.lineCount,
+		newLinesCount: strings.Count(e.LogEvent.Message, "\n"),
 	}
 	return eventCopy
 }
@@ -71,6 +74,9 @@ type LogView struct {
 	current    *logEventLine
 	eventCount uint
 	eventLimit uint
+
+	newEventMatcher   *regexp.Regexp
+	concatenateEvents bool
 
 	highlightingEnabled bool
 	highlightPattern    *regexp.Regexp
@@ -132,6 +138,7 @@ func NewLogView() *LogView {
 		timestampStyle:      defaultStyle.Foreground(tcell.ColorDarkOrange),
 		highlightColors:     make(map[string]tcell.Style),
 		screenCoords:        make([]int, 2),
+		concatenateEvents:   false,
 	}
 	logView.Box.SetBorder(false)
 	return logView
@@ -171,6 +178,50 @@ func (lv *LogView) IsLineWrapEnabled() bool {
 	defer lv.RUnlock()
 
 	return lv.wrap
+}
+
+// SetConcatenateEvents enables/disables event concatenation
+//
+// Events with a message that do not match regular expression set by SetNewEventMatcher are appended to the previous
+// event
+func (lv *LogView) SetConcatenateEvents(enabled bool) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.concatenateEvents = enabled
+}
+
+// IsConcatenateEventsEnabled returns the status of event concatenation
+func (lv *LogView) IsConcatenateEventsEnabled() bool {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.concatenateEvents
+}
+
+// SetNewEventMatcher sets the regular expression to use for detecting continuation events.
+//
+// If event message matches provided regular expression it is treated as a new event, otherwise it is appended to
+// a previous line. All attributes of appended event are discarded.
+//
+// If line wrapping is enabled, event will be split into original lines
+//
+// For example typical Java exception looks like
+// IllegalArgumentException: No nulls please
+//	   caused by NullPointerException
+//     at org.some.java.package.Class
+//     at org.another.java.package
+//
+// Each line might be a new log event, but it makes sense to treat whole stack trace as as a single event.
+func (lv *LogView) SetNewEventMatcher(regex string) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	if regex == "" {
+		lv.newEventMatcher = nil
+	} else {
+		lv.newEventMatcher = regexp.MustCompile(regex)
+	}
 }
 
 // SetTextStyle sets the default style for the log messages
@@ -395,9 +446,9 @@ func (lv *LogView) Draw(screen tcell.Screen) {
 	}
 }
 
-// AppendLogEvent appends an event to the log view
+// AppendEvent appends an event to the log view
 // If possible use AppendEvents to add multiple events at once
-func (lv *LogView) AppendLogEvent(logEvent *LogEvent) {
+func (lv *LogView) AppendEvent(logEvent *LogEvent) {
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -677,29 +728,38 @@ func (lv *LogView) setCurrent(newCurrent *logEventLine) {
 }
 
 func (lv *LogView) append(logEvent *LogEvent) {
-	// defensive copy of Log event
-	lEvent := &LogEvent{
-		EventID:   logEvent.EventID,
-		Source:    logEvent.Source,
-		Timestamp: logEvent.Timestamp,
-		Level:     logEvent.Level,
-		Message:   logEvent.Message,
-	}
-	event := &logEventLine{
-		LogEvent:  lEvent,
-		lineCount: 1,
-		lineID:    lv.eventCount + 1,
-		start:     0,
-		end:       len(logEvent.Message),
-	}
+	var event *logEventLine
 
-	lv.insertAfter(lv.lastEvent, event)
+	if !lv.concatenateEvents && lv.newEventMatcher == nil || lv.newEventMatcher.MatchString(logEvent.Message) {
+		// defensive copy of Log event
+		lEvent := &LogEvent{
+			EventID:   logEvent.EventID,
+			Source:    logEvent.Source,
+			Timestamp: logEvent.Timestamp,
+			Level:     logEvent.Level,
+			Message:   logEvent.Message,
+		}
+		event = &logEventLine{
+			LogEvent:      lEvent,
+			lineCount:     1,
+			lineID:        lv.eventCount + 1,
+			start:         0,
+			end:           len(logEvent.Message),
+			newLinesCount: strings.Count(lEvent.Message, "\n"),
+		}
+		lv.insertAfter(lv.lastEvent, event)
+		lv.eventCount += event.lineCount
+	} else {
+		event = lv.lastEvent
+		event.Message = event.Message + "\n" + logEvent.Message
+		event.newLinesCount += strings.Count(event.Message, "\n")
+		lv.mergeWrappedLines(event)
+	}
 
 	// process event
 	lv.colorize(event)
 	lv.calculateWrap(event)
 
-	lv.eventCount += event.lineCount
 	lv.ensureEventLimit()
 
 	// if we're in following mode and have enough events to fill the page then update the top position
@@ -742,34 +802,66 @@ func (lv *LogView) atOffset(start *logEventLine, offset int) *logEventLine {
 // new event lines with order >= 1 are created and inserted in the log list
 // last event is returned
 func (lv *LogView) calculateWrap(event *logEventLine) *logEventLine {
-	if !lv.wrap || lv.pageWidth == 0 || len(event.Message) < lv.pageWidth {
+	if !lv.wrap || lv.pageWidth == 0 || len(event.Message) < lv.pageWidth || event.newLinesCount == 0 {
 		return event
 	}
 	if event.order != 0 { // first drop extra event lines
 		event = lv.mergeWrappedLines(event)
 	}
-	lines := len(event.Message) / lv.pageWidth
-	if len(event.Message)%lv.pageWidth != 0 {
-		lines++
-	}
-	event.order = 1
-	event.start = 0
-	event.end = lv.pageWidth
-	event.lineCount = uint(lines)
-	currentLine := event
-	for i := 1; i < lines; i++ {
-		nextLine := event.copy()
-		nextLine.start = lv.pageWidth * i
-		nextLine.order = i + 1
-		if i == lines-1 {
-			nextLine.end = nextLine.start + len(event.Message) - lv.pageWidth*i
-		} else {
-			nextLine.end = nextLine.start + lv.pageWidth
+	//lines := len(event.Message) / lv.pageWidth
+	//if len(event.Message)%lv.pageWidth != 0 {
+	//	lines++
+	//}
+	lineLength := len(event.Message)
+	line := event.Message
+	currentEvent := event
+	start := 0
+	end := 0
+	order := 1
+	nextEvent := currentEvent
+	for end < lineLength {
+		if start != 0 {
+			nextEvent = event.copy()
+			event.lineCount++
 		}
-		currentLine = lv.insertAfter(currentLine, nextLine)
+		nextEvent.start = start
+
+		newLine := strings.Index(line[start:], "\n")
+		if newLine >= 0 && start+newLine < order*lv.pageWidth {
+			end = start + newLine + 1
+			start++
+		} else {
+			end = minInt(lineLength, order*lv.pageWidth)
+		}
+		nextEvent.end = end
+
+		nextEvent.order = order
+		order++
+		start = end
+		currentEvent = lv.insertAfter(currentEvent, nextEvent)
 	}
-	lv.eventCount += event.lineCount
-	return currentLine
+	lv.eventCount += event.lineCount - 1
+	return event
+
+	//lines += event.newLinesCount
+	//event.order = 1
+	//event.start = 0
+	//event.end = lv.pageWidth
+	//event.lineCount = uint(lines)
+	//currentLine := event
+	//for i := 1; i < lines; i++ {
+	//	nextLine := event.copy()
+	//	nextLine.start = lv.pageWidth * i
+	//	nextLine.order = i + 1
+	//	if i == lines-1 {
+	//		nextLine.end = nextLine.start + len(event.Message) - lv.pageWidth*i
+	//	} else {
+	//		nextLine.end = nextLine.start + lv.pageWidth
+	//	}
+	//	currentLine = lv.insertAfter(currentLine, nextLine)
+	//}
+	//lv.eventCount += event.lineCount
+	//return currentLine
 }
 
 func findFirstWrappedLine(event *logEventLine) *logEventLine {

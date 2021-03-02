@@ -73,3 +73,11 @@ func formatValue(value int) string {
 		return fmt.Sprintf("%2.1fB", float64(value)/1_000_000_000.0)
 	}
 }
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	} else {
+		return b
+	}
+}

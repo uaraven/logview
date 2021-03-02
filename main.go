@@ -97,7 +97,7 @@ func main() {
 
 	lastTime := time.Date(2000, 1, 1, 1, 1, 1, 1, time.Local)
 	for i, line := range lines {
-		if len(strings.TrimSpace(line)) > 0 && rand.Float64() < 0.4 || len(line) > 100 {
+		if len(line) > 0 && rand.Float64() < 0.4 || len(line) > 100 {
 			st := status.FindString(line)
 			date := dtparse.FindStringSubmatch(line)
 			dt, err := dateparse.ParseLocal(date[1])
@@ -121,7 +121,7 @@ func main() {
 				lastTime = dt
 			}
 			//current = current.Add(time.Duration(rand.Float64() / 2 * float64(time.Second)))
-			ui.logView.AppendLogEvent(event)
+			ui.logView.AppendEvent(event)
 			ui.histogram.AppendLogEvent(event)
 		}
 	}
@@ -132,7 +132,7 @@ func main() {
 
 	//event := logv.NewLogEvent("1", "20:17:51.894 [sqsTaskExecutor-10] ERROR  c.s.d.l.s.s.CopyrightDetectionService - This is the extra long line which originally said just this text that follows: Stored copyright data for pkg:npm/%40mpen/rollup-plugin-clean@0.1.8?checksum=sha1:097f0110bbc8aa5bc1026f2d689f45dcf98fcbc5&sonatype_repository=npmjs.org&type=tgz")
 	//event.Level = logv.LogLevelWarning
-	//ui.logView.AppendLogEvent(event)
+	//ui.logView.AppendEvent(event)
 
 	ui.Run()
 

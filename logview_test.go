@@ -117,6 +117,58 @@ func TestLogView_Highlighting(t *testing.T) {
 	}
 }
 
+func TestLogView_ConcatenateEvents(t *testing.T) {
+	lv := NewLogView()
+	lv.SetConcatenateEvents(true)
+	lv.SetNewEventMatcher(`^[^\s]`)
+
+	event1 := NewLogEvent("1", "Line 1")
+	event2 := NewLogEvent("2", " and still line 1")
+
+	lv.AppendEvent(event1)
+	lv.AppendEvent(event2)
+
+	if lv.EventCount() != 1 {
+		t.Errorf("EventCount must be 1")
+	}
+
+	if lv.GetCurrentEvent().EventID != "1" && lv.GetCurrentEvent().Message != "Line 1 and still line 1" {
+		t.Errorf("Excpected eventID=1 and concatenated event line")
+	}
+
+	if lv.current != lv.firstEvent && lv.current != lv.lastEvent {
+		t.Errorf("current event must be the first and the last")
+	}
+}
+
+func TestLogView_WrapEvent(t *testing.T) {
+	lv := NewLogView()
+	lv.pageWidth = 20
+
+	//										   1        10        20       30
+	//                                         |        |         |        |
+	event := NewLogEvent("1", "Line is wide and it has a\nnew line")
+
+	lv.AppendEvent(event)
+
+	if lv.EventCount() != 3 {
+		t.Errorf("EventCount must be 1")
+	}
+
+	e := lv.firstEvent
+	if e.Message[e.start:e.end] != "Line is wide and it " || e.lineCount != 3 || e.order != 1 {
+		t.Errorf("Invalid first line")
+	}
+	e = e.next
+	if e.Message[e.start:e.end] != "has a\n" || e.order != 2 {
+		t.Errorf("Invalid second line")
+	}
+	e = e.next
+	if e.Message[e.start:e.end] != "new line" || e.order != 3 {
+		t.Errorf("Invalid third line")
+	}
+}
+
 func BenchmarkLogView(b *testing.B) {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	lv := NewLogView()
