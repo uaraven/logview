@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
+	"github.com/gdamore/tcell/v2"
+	"gitlab.com/tslocum/cview"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/gdamore/tcell/v2"
-	"gitlab.com/tslocum/cview"
+	"unicode/utf8"
 )
 
 type styledSpan struct {
@@ -19,7 +19,12 @@ type styledSpan struct {
 }
 
 type logEventLine struct {
-	*LogEvent
+	EventID    string
+	Source     string
+	Timestamp  time.Time
+	Level      LogLevel
+	Message    string
+	Runes      []rune
 	lineID     uint
 	previous   *logEventLine
 	next       *logEventLine
@@ -34,9 +39,22 @@ type logEventLine struct {
 	// order indicate whether the single log event is split over multiple lines because of wrapping
 	// if the event is not split, then order will be 0
 	// otherwise the first line will have the order value of 1, the next line is 2 and so on
-	order         int
-	lineCount     uint
+	order     int
+	lineCount uint
+	// number of newline symbols in the message. Normally there shouldn't be any, but if we've done
+	// event merging, then merged parts will be separated by newlines. We need to know if there are any
+	// so we can decide if we need to wrap them.
 	newLinesCount int
+}
+
+func (e logEventLine) AsLogEvent() *LogEvent {
+	return &LogEvent{
+		EventID:   e.EventID,
+		Source:    e.Source,
+		Timestamp: e.Timestamp,
+		Level:     e.Level,
+		Message:   string(e.Runes),
+	}
 }
 
 func (e logEventLine) getLineCount() uint {
@@ -45,7 +63,12 @@ func (e logEventLine) getLineCount() uint {
 
 func (e *logEventLine) copy() *logEventLine {
 	eventCopy := &logEventLine{
-		LogEvent:      e.LogEvent,
+		EventID:       e.EventID,
+		Source:        e.Source,
+		Timestamp:     e.Timestamp,
+		Level:         e.Level,
+		Message:       e.Message,
+		Runes:         e.Runes,
 		lineID:        e.lineID,
 		previous:      e.previous,
 		next:          e.next,
@@ -54,7 +77,7 @@ func (e *logEventLine) copy() *logEventLine {
 		end:           e.end,
 		order:         e.order,
 		lineCount:     e.lineCount,
-		newLinesCount: strings.Count(e.LogEvent.Message, "\n"),
+		newLinesCount: e.newLinesCount,
 	}
 	return eventCopy
 }
@@ -374,7 +397,7 @@ func (lv *LogView) GetCurrentEvent() *LogEvent {
 	lv.RLock()
 	defer lv.RUnlock()
 
-	return lv.current.LogEvent
+	return lv.current.AsLogEvent()
 }
 
 // SetBorder does nothing
@@ -723,7 +746,7 @@ func (lv *LogView) setCurrent(newCurrent *logEventLine) {
 	lv.current = newCurrent
 
 	if lv.onCurrentChanged != nil && lv.highlightCurrent {
-		lv.onCurrentChanged(lv.current.LogEvent)
+		lv.onCurrentChanged(lv.current.AsLogEvent())
 	}
 }
 
@@ -732,20 +755,18 @@ func (lv *LogView) append(logEvent *LogEvent) {
 
 	if !lv.concatenateEvents && lv.newEventMatcher == nil || lv.newEventMatcher.MatchString(logEvent.Message) {
 		// defensive copy of Log event
-		lEvent := &LogEvent{
-			EventID:   logEvent.EventID,
-			Source:    logEvent.Source,
-			Timestamp: logEvent.Timestamp,
-			Level:     logEvent.Level,
-			Message:   logEvent.Message,
-		}
 		event = &logEventLine{
-			LogEvent:      lEvent,
+			EventID:       logEvent.EventID,
+			Source:        logEvent.Source,
+			Timestamp:     logEvent.Timestamp,
+			Level:         logEvent.Level,
+			Message:       logEvent.Message,
+			Runes:         []rune(logEvent.Message),
 			lineCount:     1,
 			lineID:        lv.eventCount + 1,
 			start:         0,
-			end:           len(logEvent.Message),
-			newLinesCount: strings.Count(lEvent.Message, "\n"),
+			end:           utf8.RuneCountInString(logEvent.Message),
+			newLinesCount: strings.Count(logEvent.Message, "\n"),
 		}
 		lv.insertAfter(lv.lastEvent, event)
 	} else {
@@ -802,7 +823,7 @@ func (lv *LogView) atOffset(start *logEventLine, offset int) *logEventLine {
 // last event is returned
 func (lv *LogView) calculateWrap(event *logEventLine) *logEventLine {
 	if !lv.wrap || lv.pageWidth == 0 || (len(event.Message) <= lv.pageWidth && event.newLinesCount == 0) {
-		if event.order != 0 {
+		if event.order != 0 { // no wrapping needed, but the line is wrapped
 			event = lv.mergeWrappedLines(event)
 		}
 		return event
@@ -813,19 +834,19 @@ func (lv *LogView) calculateWrap(event *logEventLine) *logEventLine {
 	prevEvent := event.previous
 	lv.deleteEvent(event)
 
-	lineLength := len(event.Message)
+	lineLength := len(event.Runes)
 	start := 0
 	end := 0
 	order := 1
 	var firstEvent *logEventLine
 	for end < lineLength {
-		if end-start == lv.pageWidth || event.Message[end] == '\n' { // wrap here
+		if end-start == lv.pageWidth || event.Runes[end] == '\n' { // wrap here
 			currentEvent := event.copy()
 			if start == 0 {
 				firstEvent = currentEvent
 			}
 			currentEvent.start = start
-			if event.Message[end] == '\n' {
+			if event.Runes[end] == '\n' {
 				end = end + 1
 			}
 			currentEvent.end = end
@@ -870,7 +891,7 @@ func (lv *LogView) mergeWrappedLines(event *logEventLine) *logEventLine {
 	event.start = 0
 	lv.eventCount -= event.lineCount
 	event.lineCount = 1
-	event.end = len(event.Message)
+	event.end = len(event.Runes)
 	next := event.next
 	for next.next != nil && next.next.order > 1 { // find event with order <= 1, that will be
 		next = next.next
@@ -910,7 +931,7 @@ func (lv *LogView) colorize(event *logEventLine) {
 		event.styleSpans = []styledSpan{
 			{
 				start: 0,
-				end:   len(event.Message),
+				end:   len(event.Runes),
 				style: defaultStyle,
 			},
 		}
@@ -919,6 +940,7 @@ func (lv *LogView) colorize(event *logEventLine) {
 
 func (lv *LogView) buildSpans(text string, groupIndices []int, groupNames []string, defaultStyle tcell.Style, useDefaultBg bool) []styledSpan {
 	currentPos := 0
+	currentRunePos := 0
 	spans := make([]styledSpan, 0)
 
 	_, dbg, _ := defaultStyle.Decompose()
@@ -928,12 +950,14 @@ func (lv *LogView) buildSpans(text string, groupIndices []int, groupNames []stri
 		en := groupIndices[i*2+1]
 		if st != -1 && en != -1 {
 			if st != currentPos {
+				runeLen := utf8.RuneCountInString(text[currentPos:st])
 				beforeSpan := styledSpan{
-					start: currentPos,
-					end:   st - 1,
+					start: currentRunePos,
+					end:   currentRunePos + runeLen - 1,
 					style: defaultStyle,
 				}
 				spans = append(spans, beforeSpan)
+				currentRunePos = currentRunePos + runeLen
 			}
 
 			var style tcell.Style
@@ -946,19 +970,21 @@ func (lv *LogView) buildSpans(text string, groupIndices []int, groupNames []stri
 				style = style.Background(dbg)
 			}
 
+			runeLen := utf8.RuneCountInString(text[st:en])
 			matched := styledSpan{
-				start: st,
-				end:   en - 1,
+				start: currentRunePos,
+				end:   currentRunePos + runeLen - 1,
 				style: style,
 			}
 			spans = append(spans, matched)
+			currentRunePos += runeLen
 			currentPos = en
 		}
 	}
 	if currentPos < len(text)-1 {
 		afterSpan := styledSpan{
-			start: currentPos,
-			end:   len(text) - 1,
+			start: currentRunePos,
+			end:   utf8.RuneCountInString(text),
 			style: defaultStyle,
 		}
 		spans = append(spans, afterSpan)
@@ -1134,7 +1160,7 @@ func (lv *LogView) printLogLine(screen tcell.Screen, x int, y int, event *logEve
 		if lv.highlightCurrent && event == lv.current { // overwrite bg color for current selected event
 			style = style.Background(lv.currentBgColor)
 		}
-		screen.SetCell(i, y, style, rune(event.Message[textPos]))
+		screen.SetCell(i, y, style, event.Runes[textPos])
 		i++
 		textPos++
 		if textPos > event.styleSpans[spanIndex].end {
@@ -1156,7 +1182,7 @@ func (lv *LogView) printLogLineNoHighlights(screen tcell.Screen, x int, y int, e
 		style = style.Background(lv.currentBgColor)
 	}
 	for pos := event.start; pos < event.end; pos++ {
-		screen.SetCell(i, y, style, rune(event.Message[pos]))
+		screen.SetCell(i, y, style, event.Runes[pos])
 		i++
 		if i >= lv.pageWidth {
 			break

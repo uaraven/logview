@@ -149,7 +149,7 @@ func TestLogView_WrapEvent(t *testing.T) {
 
 	//										   1        10        20       30
 	//                                         |        |         |        |
-	event := NewLogEvent("3", "Line is wide and it has a\nnew line")
+	event := NewLogEvent("3", "Line is wide але it has a\nnew line")
 	lv.AppendEvent(event)
 
 	if lv.EventCount() != 5 {
@@ -157,17 +157,62 @@ func TestLogView_WrapEvent(t *testing.T) {
 	}
 
 	e := lv.firstEvent.next.next
-	if e.Message[e.start:e.end] != "Line is wide and it " || e.lineCount != 3 || e.order != 1 {
+	if string(e.Runes[e.start:e.end]) != "Line is wide але it " || e.lineCount != 3 || e.order != 1 {
 		t.Errorf("Invalid first line")
 	}
 	e = e.next
-	if e.Message[e.start:e.end] != "has a\n" || e.order != 2 {
+	if string(e.Runes[e.start:e.end]) != "has a\n" || e.order != 2 {
 		t.Errorf("Invalid second line")
 	}
 	e = e.next
-	if e.Message[e.start:e.end] != "new line" || e.order != 3 {
+	if string(e.Runes[e.start:e.end]) != "new line" || e.order != 3 {
 		t.Errorf("Invalid third line")
 	}
+}
+
+func TestLogView_colorize(t *testing.T) {
+	lv := NewLogView()
+	lv.SetHighlightCurrentEvent(true)
+	lv.SetHighlightPattern(`\s+(?P<word1>[\p{L}]*)\s+(?P<word2>.*)\s+(?P<num>\d+) (?P<word3>[\p{L}]*)`)
+	lv.SetHighlightColorFg("word1", tcell.ColorYellow)
+	lv.SetHighlightColorFg("word2", tcell.ColorYellowGreen)
+	lv.SetHighlightColorFg("word3", tcell.ColorYellowGreen)
+	lv.SetHighlightColorFg("num", tcell.Color16)
+
+	msg := " Два wordoслова 11 møøsè"
+	event := &logEventLine{
+		EventID: "1",
+		Message: msg,
+		Runes:   []rune(msg),
+	}
+
+	lv.colorize(event)
+
+	getSpan := func(i int) string {
+		return string(event.Runes[event.styleSpans[i].start:event.styleSpans[i].end])
+	}
+
+	expected := map[int]string{
+		0: " ",
+		1: "Два",
+		2: " ",
+		3: "wordoслова",
+		4: " ",
+		5: "11",
+		6: " ",
+		7: "møøsè",
+	}
+
+	if len(event.styleSpans) != len(expected) {
+		t.Errorf("Invalid number of spans, expected 3, got %d", len(event.styleSpans))
+	}
+
+	for k, v := range expected {
+		if getSpan(k) != v {
+			t.Errorf("Invalid span %d, expected '%s', got '%s'", k, v, getSpan(k))
+		}
+	}
+
 }
 
 func BenchmarkLogView(b *testing.B) {
