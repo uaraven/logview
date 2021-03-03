@@ -474,6 +474,7 @@ func (lv *LogView) Draw(screen tcell.Screen) {
 // AppendEvent appends an event to the log view
 // If possible use AppendEvents to add multiple events at once
 func (lv *LogView) AppendEvent(logEvent *LogEvent) {
+	defer lv.fireOnCurrentChange(lv.current)
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -482,6 +483,7 @@ func (lv *LogView) AppendEvent(logEvent *LogEvent) {
 
 // AppendEvents appends multiple events in a single batch improving performance
 func (lv *LogView) AppendEvents(events []*LogEvent) {
+	defer lv.fireOnCurrentChange(lv.current)
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -494,6 +496,7 @@ func (lv *LogView) AppendEvents(events []*LogEvent) {
 //
 // This will enable autofollowing if the last line has been reached
 func (lv *LogView) ScrollPageDown() {
+	defer lv.fireOnCurrentChange(lv.current)
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -504,6 +507,7 @@ func (lv *LogView) ScrollPageDown() {
 //
 // This does not disables following.
 func (lv *LogView) ScrollPageUp() {
+	defer lv.fireOnCurrentChange(lv.current)
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -514,6 +518,7 @@ func (lv *LogView) ScrollPageUp() {
 //
 // This does not automatically enables following. User SetFollowing function to enable it
 func (lv *LogView) ScrollToBottom() {
+	defer lv.fireOnCurrentChange(lv.current)
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -524,6 +529,7 @@ func (lv *LogView) ScrollToBottom() {
 //
 // This does not automatically enables following. User SetFollowing function to enable it
 func (lv *LogView) ScrollToTop() {
+	defer lv.fireOnCurrentChange(lv.current)
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -566,6 +572,7 @@ func (lv *LogView) IsFollowing() bool {
 //
 // Current event will be updated to the found event
 func (lv *LogView) ScrollToTimestamp(timestamp time.Time) bool {
+	defer lv.fireOnCurrentChange(lv.current)
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -578,7 +585,7 @@ func (lv *LogView) ScrollToTimestamp(timestamp time.Time) bool {
 	}
 	lv.top = event
 	lv.adjustTop()
-	lv.setCurrent(event)
+	lv.current = event
 	return true
 }
 
@@ -587,6 +594,7 @@ func (lv *LogView) ScrollToTimestamp(timestamp time.Time) bool {
 //
 // Current event will be updated to the found event
 func (lv *LogView) ScrollToEventID(eventID string) bool {
+	defer lv.fireOnCurrentChange(lv.current)
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -599,7 +607,7 @@ func (lv *LogView) ScrollToEventID(eventID string) bool {
 	}
 	lv.top = event
 	lv.adjustTop()
-	lv.setCurrent(event)
+	lv.current = event
 	return true
 }
 
@@ -674,6 +682,7 @@ func (lv *LogView) IsShowingSource() bool {
 // InputHandler returns the handler for this primitive.
 func (lv *LogView) InputHandler() func(event *tcell.EventKey, setFocus func(p cview.Primitive)) {
 	return lv.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p cview.Primitive)) {
+		defer lv.fireOnCurrentChange(lv.current)
 		lv.Lock()
 		defer lv.Unlock()
 
@@ -703,6 +712,7 @@ func (lv *LogView) MouseHandler() func(action cview.MouseAction, event *tcell.Ev
 
 		switch action {
 		case cview.MouseLeftClick:
+			defer lv.fireOnCurrentChange(lv.current)
 			consumed = true
 			setFocus(lv)
 			lv.Lock()
@@ -737,10 +747,8 @@ func (lv *LogView) SetOnCurrentChange(listener OnCurrentChanged) {
 // *******************************
 // internal implementation details
 
-func (lv *LogView) setCurrent(newCurrent *logEventLine) {
-	lv.current = newCurrent
-
-	if lv.onCurrentChanged != nil && lv.highlightCurrent {
+func (lv *LogView) fireOnCurrentChange(oldCurrent *logEventLine) {
+	if oldCurrent != lv.current && lv.onCurrentChanged != nil && lv.highlightCurrent {
 		lv.onCurrentChanged(lv.current.AsLogEvent())
 	}
 }
@@ -779,7 +787,7 @@ func (lv *LogView) append(logEvent *LogEvent) {
 	// if we're in following mode and have enough events to fill the page then update the top position
 	if lv.following && lv.eventCount > uint(lv.pageHeight) {
 		lv.top = lv.atOffset(lv.lastEvent, -lv.pageHeight)
-		lv.setCurrent(event)
+		lv.current = event
 	}
 }
 
@@ -1006,7 +1014,7 @@ func (lv *LogView) insertAfter(node *logEventLine, new *logEventLine, adjustLine
 		lv.firstEvent = new
 		lv.lastEvent = new
 		lv.top = new
-		lv.setCurrent(new)
+		lv.current = new
 	} else {
 		new.previous = node
 		new.next = node.next
@@ -1277,13 +1285,13 @@ func (lv *LogView) ensureEventLimit() {
 
 func (lv *LogView) scrollToStart() {
 	lv.top = lv.firstEvent
-	lv.setCurrent(lv.firstEvent)
+	lv.current = lv.firstEvent
 	lv.following = false
 }
 
 func (lv *LogView) scrollToEnd() {
 	lv.top = lv.atOffset(lv.lastEvent, -(lv.pageHeight - 1))
-	lv.setCurrent(lv.lastEvent)
+	lv.current = lv.lastEvent
 	lv.following = true
 }
 
@@ -1293,7 +1301,7 @@ func (lv *LogView) scrollOneUp() {
 	if lv.current == lv.top || !lv.highlightCurrent {
 		lv.top = lv.atOffset(lv.top, -1)
 	}
-	lv.setCurrent(lv.atOffset(lv.current, -1))
+	lv.current = lv.atOffset(lv.current, -1)
 }
 
 func (lv *LogView) scrollOneDown() {
@@ -1301,7 +1309,7 @@ func (lv *LogView) scrollOneDown() {
 		lv.following = true
 		return
 	}
-	lv.setCurrent(lv.atOffset(lv.current, 1))
+	lv.current = lv.atOffset(lv.current, 1)
 	// if we're past end of page or current highlighting is off then change the top
 
 	lv.following = false
@@ -1315,13 +1323,13 @@ func (lv *LogView) adjustTop() {
 
 func (lv *LogView) scrollPageUp() {
 	lv.top = lv.atOffset(lv.top, -lv.pageHeight)
-	lv.setCurrent(lv.atOffset(lv.current, -lv.pageHeight))
+	lv.current = lv.atOffset(lv.current, -lv.pageHeight)
 	lv.following = false
 }
 
 func (lv *LogView) scrollPageDown() {
 	lv.top = lv.atOffset(lv.top, lv.pageHeight)
-	lv.setCurrent(lv.atOffset(lv.current, lv.pageHeight))
+	lv.current = lv.atOffset(lv.current, lv.pageHeight)
 	if lv.current == lv.lastEvent {
 		lv.following = true
 		lv.top = lv.atOffset(lv.lastEvent, -(lv.pageHeight - 1))
