@@ -212,7 +212,24 @@ func TestLogView_colorize(t *testing.T) {
 			t.Errorf("Invalid span %d, expected '%s', got '%s'", k, v, getSpan(k))
 		}
 	}
+}
 
+func TestLogView_mergeWrappedLines(t *testing.T) {
+	lv := NewLogView()
+	lv.pageWidth = 20
+	lv.AppendEvent(NewLogEvent("1", "This is a rather long event and it should be wrapped"))
+
+	if lv.firstEvent.lineCount != 3 {
+		t.Errorf("Event should wrap multiple lines, but got: %d", lv.firstEvent.lineCount)
+	}
+	e := lv.firstEvent.next
+	e1 := lv.mergeWrappedLines(e)
+	if string(e1.Runes) != "This is a rather long event and it should be wrapped" {
+		t.Errorf("Invalid text in unwrapped event")
+	}
+	if lv.firstEvent != e1 && lv.lastEvent != e1 {
+		t.Errorf("first and last should point to unwrapped event")
+	}
 }
 
 func BenchmarkLogView(b *testing.B) {
