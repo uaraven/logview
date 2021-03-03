@@ -1,16 +1,16 @@
-package main
+package logview
 
 import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
-	"gitlab.com/tslocum/cview"
+	gui "github.com/rivo/tview"
 	"sync"
 	"time"
 )
 
 // LogVelocityView is a bar chart to display number of log events per time period
 type LogVelocityView struct {
-	*cview.Box
+	*gui.Box
 
 	defaultStyle tcell.Style
 	errorColor   tcell.Color
@@ -46,12 +46,12 @@ var blocks = []rune{
 // NewLogVelocityView creates a new log velocity view with a defined bucket time frame
 func NewLogVelocityView(bucketWidth time.Duration) *LogVelocityView {
 	return &LogVelocityView{
-		Box:          cview.NewBox(),
+		Box:          gui.NewBox(),
 		bucketWidth:  int64(bucketWidth.Seconds()),
 		infoBuckets:  make(map[int64]int),
 		warnBuckets:  make(map[int64]int),
 		errorBuckets: make(map[int64]int),
-		defaultStyle: tcell.StyleDefault.Foreground(cview.Styles.PrimaryTextColor).Background(tcell.Color239),
+		defaultStyle: tcell.StyleDefault.Foreground(gui.Styles.PrimaryTextColor).Background(tcell.Color239),
 		errorColor:   tcell.ColorIndianRed,
 		warningColor: tcell.ColorSaddleBrown,
 		showLogLevel: LogLevelAll,
@@ -140,9 +140,9 @@ func (lh *LogVelocityView) GetAnchor() *time.Time {
 
 // Draw draws this primitive onto the screen.
 func (lh *LogVelocityView) Draw(screen tcell.Screen) {
-	if !lh.GetVisible() {
-		return
-	}
+	//if !lh.GetVisible() {
+	//	return
+	//}
 
 	lh.Box.Draw(screen)
 

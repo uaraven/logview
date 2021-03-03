@@ -1,9 +1,9 @@
-package main
+package logview
 
 import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
-	"gitlab.com/tslocum/cview"
+	gui "github.com/rivo/tview"
 	"regexp"
 	"strconv"
 	"strings"
@@ -87,7 +87,7 @@ type OnCurrentChanged func(current *LogEvent)
 //
 // LogView doesn't have border or scroll bars to allow easier copy-paste of events.
 type LogView struct {
-	*cview.Box
+	*gui.Box
 
 	firstEvent *logEventLine
 	lastEvent  *logEventLine
@@ -141,9 +141,9 @@ type LogView struct {
 
 // NewLogView returns a new log view.
 func NewLogView() *LogView {
-	defaultStyle := tcell.StyleDefault.Foreground(cview.Styles.PrimaryTextColor).Background(cview.Styles.PrimitiveBackgroundColor)
+	defaultStyle := tcell.StyleDefault.Foreground(gui.Styles.PrimaryTextColor).Background(gui.Styles.PrimitiveBackgroundColor)
 	logView := &LogView{
-		Box:                 cview.NewBox(),
+		Box:                 gui.NewBox(),
 		showSource:          false,
 		showTimestamp:       false,
 		timestampFormat:     "15:04:05.000",
@@ -404,7 +404,7 @@ func (lv *LogView) SetBorder(_ bool) {
 }
 
 // Focus is called when this primitive receives focus.
-func (lv *LogView) Focus(_ func(p cview.Primitive)) {
+func (lv *LogView) Focus(_ func(p gui.Primitive)) {
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -424,9 +424,9 @@ func (lv *LogView) HasFocus() bool {
 
 // Draw draws this primitive onto the screen.
 func (lv *LogView) Draw(screen tcell.Screen) {
-	if !lv.GetVisible() {
-		return
-	}
+	//if !lv.GetVisible() {
+	//	return
+	//}
 
 	lv.Box.Draw(screen)
 
@@ -680,38 +680,38 @@ func (lv *LogView) IsShowingSource() bool {
 }
 
 // InputHandler returns the handler for this primitive.
-func (lv *LogView) InputHandler() func(event *tcell.EventKey, setFocus func(p cview.Primitive)) {
-	return lv.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p cview.Primitive)) {
+func (lv *LogView) InputHandler() func(event *tcell.EventKey, setFocus func(p gui.Primitive)) {
+	return lv.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p gui.Primitive)) {
 		defer lv.fireOnCurrentChange(lv.current)
 		lv.Lock()
 		defer lv.Unlock()
 
-		if cview.HitShortcut(event, cview.Keys.MoveFirst, cview.Keys.MoveFirst2) {
+		if HitShortcut(event, Keys.MoveFirst, Keys.MoveFirst2) {
 			lv.scrollToStart()
-		} else if cview.HitShortcut(event, cview.Keys.MoveLast, cview.Keys.MoveLast2) {
+		} else if HitShortcut(event, Keys.MoveLast, Keys.MoveLast2) {
 			lv.scrollToEnd()
-		} else if cview.HitShortcut(event, cview.Keys.MoveUp, cview.Keys.MoveUp2) {
+		} else if HitShortcut(event, Keys.MoveUp, Keys.MoveUp2) {
 			lv.scrollOneUp()
-		} else if cview.HitShortcut(event, cview.Keys.MoveDown, cview.Keys.MoveDown2) {
+		} else if HitShortcut(event, Keys.MoveDown, Keys.MoveDown2) {
 			lv.scrollOneDown()
-		} else if cview.HitShortcut(event, cview.Keys.MovePreviousPage) {
+		} else if HitShortcut(event, Keys.MovePreviousPage) {
 			lv.scrollPageUp()
-		} else if cview.HitShortcut(event, cview.Keys.MoveNextPage) {
+		} else if HitShortcut(event, Keys.MoveNextPage) {
 			lv.scrollPageDown()
 		}
 	})
 }
 
 // MouseHandler returns the mouse handler for this primitive.
-func (lv *LogView) MouseHandler() func(action cview.MouseAction, event *tcell.EventMouse, setFocus func(p cview.Primitive)) (consumed bool, capture cview.Primitive) {
-	return lv.WrapMouseHandler(func(action cview.MouseAction, event *tcell.EventMouse, setFocus func(p cview.Primitive)) (consumed bool, capture cview.Primitive) {
+func (lv *LogView) MouseHandler() func(action gui.MouseAction, event *tcell.EventMouse, setFocus func(p gui.Primitive)) (consumed bool, capture gui.Primitive) {
+	return lv.WrapMouseHandler(func(action gui.MouseAction, event *tcell.EventMouse, setFocus func(p gui.Primitive)) (consumed bool, capture gui.Primitive) {
 		x, y := event.Position()
 		if !lv.InRect(x, y) {
 			return false, nil
 		}
 
 		switch action {
-		case cview.MouseLeftClick:
+		case gui.MouseLeftClick:
 			defer lv.fireOnCurrentChange(lv.current)
 			consumed = true
 			setFocus(lv)
@@ -722,10 +722,10 @@ func (lv *LogView) MouseHandler() func(action cview.MouseAction, event *tcell.Ev
 			if lv.onCurrentChanged != nil {
 				lv.onCurrentChanged(lv.current.AsLogEvent())
 			}
-		case cview.MouseScrollUp:
+		case gui.MouseScrollUp:
 			lv.ScrollPageUp()
 			consumed = true
-		case cview.MouseScrollDown:
+		case gui.MouseScrollDown:
 			lv.ScrollPageDown()
 			consumed = true
 		}

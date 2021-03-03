@@ -1,6 +1,7 @@
 # LogView widget for cview
 
-LogView widget for [cview](https://gitlab.com/tslocum/cview). Might also work with [tview](https://github.com/rivo/tview) although that was not tested.
+LogView widget for [tview](https://github.com/rivo/tview). It will also work with [cview](https://gitlab.com/tslocum/cview),
+just replace import.
 
 ![](screen.png)
 
@@ -24,7 +25,7 @@ LogView supports:
 - [x] scrolling to timestamp
 - [x] optional display of log event source and timestamp separately from main message
 - [x] keyboard and mouse scrolling
-- [x] selection of log event with keyboard and mouse with callback on selection change 
+- [x] selection of log event with a keyboard or mouse with a callback on selection change 
 - [x] merging of continuation events (i.e. multiline java stack-traces can be treated as one log event)
 - [x] velocity graph
 

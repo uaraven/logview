@@ -1,8 +1,8 @@
-package main
+package logview
 
 import (
 	"github.com/gdamore/tcell/v2"
-	"gitlab.com/tslocum/cview"
+	gui "github.com/rivo/tview"
 	"strconv"
 	"testing"
 )
@@ -11,7 +11,7 @@ const eventCount = 50
 
 func BenchmarkTextViewReindexOn(b *testing.B) {
 	screen := tcell.NewSimulationScreen("UTF-8")
-	tv := cview.NewTextView()
+	tv := gui.NewTextView()
 	tv.SetDynamicColors(true)
 
 	events := randomBenchStrings(eventCount)
@@ -30,8 +30,8 @@ func BenchmarkTextViewReindexOn(b *testing.B) {
 
 func BenchmarkTextViewReindexOff(b *testing.B) {
 	screen := tcell.NewSimulationScreen("UTF-8")
-	tv := cview.NewTextView()
-	tv.SetReindexBuffer(false)
+	tv := gui.NewTextView()
+	//tv.SetReindexBuffer(false)
 	tv.SetDynamicColors(true)
 
 	events := randomBenchStrings(eventCount)
@@ -50,8 +50,8 @@ func BenchmarkTextViewReindexOff(b *testing.B) {
 
 func BenchmarkTextViewSingleDraw(b *testing.B) {
 	screen := tcell.NewSimulationScreen("UTF-8")
-	tv := cview.NewTextView()
-	tv.SetReindexBuffer(false)
+	tv := gui.NewTextView()
+	//tv.SetReindexBuffer(false)
 	tv.SetDynamicColors(true)
 
 	events := randomBenchStrings(eventCount)
