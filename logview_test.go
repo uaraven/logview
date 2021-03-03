@@ -144,18 +144,19 @@ func TestLogView_ConcatenateEvents(t *testing.T) {
 func TestLogView_WrapEvent(t *testing.T) {
 	lv := NewLogView()
 	lv.pageWidth = 20
+	lv.AppendEvent(NewLogEvent("1", "Test 1"))
+	lv.AppendEvent(NewLogEvent("2", "Test 2"))
 
 	//										   1        10        20       30
 	//                                         |        |         |        |
-	event := NewLogEvent("1", "Line is wide and it has a\nnew line")
-
+	event := NewLogEvent("3", "Line is wide and it has a\nnew line")
 	lv.AppendEvent(event)
 
-	if lv.EventCount() != 3 {
-		t.Errorf("EventCount must be 1")
+	if lv.EventCount() != 5 {
+		t.Errorf("EventCount must be 5")
 	}
 
-	e := lv.firstEvent
+	e := lv.firstEvent.next.next
 	if e.Message[e.start:e.end] != "Line is wide and it " || e.lineCount != 3 || e.order != 1 {
 		t.Errorf("Invalid first line")
 	}

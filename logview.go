@@ -748,7 +748,6 @@ func (lv *LogView) append(logEvent *LogEvent) {
 			newLinesCount: strings.Count(lEvent.Message, "\n"),
 		}
 		lv.insertAfter(lv.lastEvent, event)
-		lv.eventCount += event.lineCount
 	} else {
 		event = lv.lastEvent
 		event.Message = event.Message + "\n" + logEvent.Message
@@ -802,66 +801,52 @@ func (lv *LogView) atOffset(start *logEventLine, offset int) *logEventLine {
 // new event lines with order >= 1 are created and inserted in the log list
 // last event is returned
 func (lv *LogView) calculateWrap(event *logEventLine) *logEventLine {
-	if !lv.wrap || lv.pageWidth == 0 || len(event.Message) < lv.pageWidth || event.newLinesCount == 0 {
+	if !lv.wrap || lv.pageWidth == 0 || (len(event.Message) <= lv.pageWidth && event.newLinesCount == 0) {
+		if event.order != 0 {
+			event = lv.mergeWrappedLines(event)
+		}
 		return event
 	}
 	if event.order != 0 { // first drop extra event lines
 		event = lv.mergeWrappedLines(event)
 	}
-	//lines := len(event.Message) / lv.pageWidth
-	//if len(event.Message)%lv.pageWidth != 0 {
-	//	lines++
-	//}
+	prevEvent := event.previous
+	lv.deleteEvent(event)
+
 	lineLength := len(event.Message)
-	line := event.Message
-	currentEvent := event
 	start := 0
 	end := 0
 	order := 1
-	nextEvent := currentEvent
+	var firstEvent *logEventLine
 	for end < lineLength {
-		if start != 0 {
-			nextEvent = event.copy()
-			event.lineCount++
-		}
-		nextEvent.start = start
+		if end-start == lv.pageWidth || event.Message[end] == '\n' { // wrap here
+			currentEvent := event.copy()
+			if start == 0 {
+				firstEvent = currentEvent
+			}
+			currentEvent.start = start
+			if event.Message[end] == '\n' {
+				end = end + 1
+			}
+			currentEvent.end = end
+			currentEvent.order = order
 
-		newLine := strings.Index(line[start:], "\n")
-		if newLine >= 0 && start+newLine < order*lv.pageWidth {
-			end = start + newLine + 1
-			start++
+			start = end
+			prevEvent = lv.insertAfter(prevEvent, currentEvent)
+			order++
 		} else {
-			end = minInt(lineLength, order*lv.pageWidth)
+			end++
 		}
-		nextEvent.end = end
-
-		nextEvent.order = order
-		order++
-		start = end
-		currentEvent = lv.insertAfter(currentEvent, nextEvent)
 	}
-	lv.eventCount += event.lineCount - 1
-	return event
-
-	//lines += event.newLinesCount
-	//event.order = 1
-	//event.start = 0
-	//event.end = lv.pageWidth
-	//event.lineCount = uint(lines)
-	//currentLine := event
-	//for i := 1; i < lines; i++ {
-	//	nextLine := event.copy()
-	//	nextLine.start = lv.pageWidth * i
-	//	nextLine.order = i + 1
-	//	if i == lines-1 {
-	//		nextLine.end = nextLine.start + len(event.Message) - lv.pageWidth*i
-	//	} else {
-	//		nextLine.end = nextLine.start + lv.pageWidth
-	//	}
-	//	currentLine = lv.insertAfter(currentLine, nextLine)
-	//}
-	//lv.eventCount += event.lineCount
-	//return currentLine
+	if end > start { // add final piece
+		currentEvent := event.copy()
+		currentEvent.start = start
+		currentEvent.end = end
+		currentEvent.order = order
+		prevEvent = lv.insertAfter(prevEvent, currentEvent)
+	}
+	firstEvent.lineCount = uint(order)
+	return prevEvent
 }
 
 func findFirstWrappedLine(event *logEventLine) *logEventLine {
@@ -890,8 +875,12 @@ func (lv *LogView) mergeWrappedLines(event *logEventLine) *logEventLine {
 	for next.next != nil && next.next.order > 1 { // find event with order <= 1, that will be
 		next = next.next
 	}
-	event.next = next.next
-	next.next.previous = event
+	if next.next != nil {
+		event.next = next.next
+		next.next.previous = event
+	} else {
+		event.next = nil
+	}
 	return event
 }
 
@@ -994,6 +983,7 @@ func (lv *LogView) insertAfter(node *logEventLine, new *logEventLine) *logEventL
 			lv.lastEvent = new
 		}
 	}
+	lv.eventCount++
 	return new
 }
 
@@ -1151,8 +1141,8 @@ func (lv *LogView) printLogLine(screen tcell.Screen, x int, y int, event *logEve
 			spanIndex++
 		}
 	}
-	if i < x+lv.pageWidth {
-		for i < x+lv.pageWidth {
+	if i <= x+lv.pageWidth {
+		for i <= x+lv.pageWidth {
 			screen.SetCell(i, y, style, ' ')
 			i++
 		}
@@ -1172,8 +1162,8 @@ func (lv *LogView) printLogLineNoHighlights(screen tcell.Screen, x int, y int, e
 			break
 		}
 	}
-	if i < x+lv.pageWidth && lv.highlightCurrent && event == lv.current {
-		for i < x+lv.pageWidth {
+	if i <= x+lv.pageWidth && lv.highlightCurrent && event == lv.current {
+		for i <= x+lv.pageWidth {
 			screen.SetCell(i, y, style, ' ')
 			i++
 		}

@@ -1,4 +1,4 @@
-module githib.com/uaraven/logview
+module github.com/uaraven/logview
 
 go 1.16
 
