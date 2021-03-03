@@ -399,12 +399,12 @@ func (lv *LogView) GetCurrentEvent() *LogEvent {
 }
 
 // SetBorder does nothing
-func (lv *LogView) SetBorder(show bool) {
+func (lv *LogView) SetBorder(_ bool) {
 	// do nothing
 }
 
 // Focus is called when this primitive receives focus.
-func (lv *LogView) Focus(delegate func(p cview.Primitive)) {
+func (lv *LogView) Focus(_ func(p cview.Primitive)) {
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -674,15 +674,6 @@ func (lv *LogView) IsShowingSource() bool {
 // InputHandler returns the handler for this primitive.
 func (lv *LogView) InputHandler() func(event *tcell.EventKey, setFocus func(p cview.Primitive)) {
 	return lv.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p cview.Primitive)) {
-		//key := event.Key()
-
-		//if cview.HitShortcut(event, cview.Keys.Cancel, cview.Keys.Select, cview.Keys.Select2, cview.Keys.MovePreviousField, cview.Keys.MoveNextField) {
-		//	if lv.done != nil {
-		//		lv.done(key)
-		//	}
-		//	return
-		//}
-
 		lv.Lock()
 		defer lv.Unlock()
 
@@ -714,11 +705,13 @@ func (lv *LogView) MouseHandler() func(action cview.MouseAction, event *tcell.Ev
 		case cview.MouseLeftClick:
 			consumed = true
 			setFocus(lv)
-
 			lv.Lock()
-			defer lv.Unlock()
 			localY := y - lv.screenCoords[1]
-			lv.setCurrent(lv.atOffset(lv.top, localY))
+			lv.current = lv.atOffset(lv.top, localY)
+			lv.Unlock()
+			if lv.onCurrentChanged != nil {
+				lv.onCurrentChanged(lv.current.AsLogEvent())
+			}
 		case cview.MouseScrollUp:
 			lv.ScrollPageUp()
 			consumed = true
@@ -832,32 +825,25 @@ func (lv *LogView) calculateWrap(event *logEventLine) *logEventLine {
 	if event.order != 0 { // first drop extra event lines
 		event = lv.mergeWrappedLines(event)
 	}
-	prevEvent := event.previous
-	lv.deleteEvent(event, false)
 
 	lineLength := len(event.Runes)
 	start := 0
 	end := 0
-	order := 1
-	var firstEvent *logEventLine
+	events := make([]*logEventLine, 0)
+
 	for end < lineLength {
 		if end-start == lv.pageWidth || event.Runes[end] == '\n' { // wrap here
 			currentEvent := event.copy()
 			currentEvent.hasNewLines = false
-			if start == 0 {
-				firstEvent = currentEvent
-			}
 			currentEvent.start = start
 			if event.Runes[end] == '\n' {
 				end = end + 1
 				currentEvent.hasNewLines = true
 			}
 			currentEvent.end = end
-			currentEvent.order = order
 
 			start = end
-			prevEvent = lv.insertAfter(prevEvent, currentEvent, false)
-			order++
+			events = append(events, currentEvent)
 		} else {
 			end++
 		}
@@ -866,14 +852,13 @@ func (lv *LogView) calculateWrap(event *logEventLine) *logEventLine {
 		currentEvent := event.copy()
 		currentEvent.start = start
 		currentEvent.end = end
-		currentEvent.order = order
-		prevEvent = lv.insertAfter(prevEvent, currentEvent, false)
-		if firstEvent == nil {
-			firstEvent = currentEvent
-		}
+		events = append(events, currentEvent)
 	}
-	firstEvent.lineCount = uint(order)
-	return prevEvent
+	for i, r := range events {
+		r.order = i + 1
+		r.lineCount = uint(len(events))
+	}
+	return lv.replaceEvent(event, events)
 }
 
 func findFirstWrappedLine(event *logEventLine) *logEventLine {
@@ -1072,6 +1057,42 @@ func (lv *LogView) deleteEvent(event *logEventLine, adjustLineCount bool) {
 	if adjustLineCount {
 		lv.eventCount--
 	}
+}
+
+// replaceEvent chains all the events in the replacement slice and
+// then replaces single event toReplace with new chain
+func (lv *LogView) replaceEvent(toReplace *logEventLine, replacement []*logEventLine) *logEventLine {
+	lastI := len(replacement) - 1
+	for i, r := range replacement {
+		if i > 0 {
+			r.previous = replacement[i-1]
+		}
+		if i < lastI {
+			r.next = replacement[i+1]
+		}
+	}
+	if toReplace.previous != nil {
+		toReplace.previous.next = replacement[0]
+	}
+	if toReplace.next != nil {
+		toReplace.next.previous = replacement[lastI]
+	}
+	replacement[0].previous = toReplace.previous
+	replacement[lastI].next = toReplace.next
+
+	if toReplace == lv.firstEvent {
+		lv.firstEvent = replacement[0]
+	}
+	if toReplace == lv.lastEvent {
+		lv.lastEvent = replacement[lastI]
+	}
+	if toReplace == lv.current {
+		lv.current = replacement[0]
+	}
+	if toReplace == lv.top {
+		lv.top = replacement[0]
+	}
+	return replacement[lastI]
 }
 
 // unwrapLines removes all wrap lines

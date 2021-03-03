@@ -170,6 +170,145 @@ func TestLogView_WrapEvent(t *testing.T) {
 	}
 }
 
+func TestLogView_replaceEvents(t *testing.T) {
+	lv := NewLogView()
+	lv.AppendEvent(NewLogEvent("1", "Test 1"))
+	lv.AppendEvent(NewLogEvent("2", "Test 2"))
+	lv.AppendEvent(NewLogEvent("3", "Test 3"))
+
+	lv.current = lv.firstEvent.next
+
+	toReplace := lv.firstEvent.next
+
+	ne := lv.replaceEvent(toReplace, []*logEventLine{
+		{
+			EventID:   "2",
+			order:     1,
+			lineCount: 2,
+			Runes:     []rune("Test2.1"),
+		},
+		{
+			EventID:   "2",
+			order:     2,
+			lineCount: 2,
+			Runes:     []rune("Test2.2"),
+		},
+	})
+
+	if lv.eventCount != 3 {
+		t.Errorf("Should not change event count")
+	}
+	ne = ne.previous
+	if ne.order != 1 && string(ne.Runes) != "Test2.1" && ne.previous != lv.firstEvent {
+		t.Errorf("Invalid first replacement event")
+	}
+	if lv.current != ne {
+		t.Errorf("Current event must point to the new replacement")
+	}
+	if lv.firstEvent.next != ne {
+		t.Errorf("First event's next must point to the new replacement")
+	}
+	ne = ne.next
+	if ne.order != 2 && string(ne.Runes) != "Test2.2" && ne.next != lv.lastEvent {
+		t.Errorf("Invalid first replacement event")
+	}
+	if lv.lastEvent.previous != ne {
+		t.Errorf("Last event's previous must point to the new replacement")
+	}
+}
+
+func TestLogView_replaceLastEvent(t *testing.T) {
+	lv := NewLogView()
+	lv.AppendEvent(NewLogEvent("1", "Test 1"))
+	lv.AppendEvent(NewLogEvent("2", "Test 2"))
+
+	lv.current = lv.firstEvent.next
+
+	toReplace := lv.firstEvent.next
+
+	ne := lv.replaceEvent(toReplace, []*logEventLine{
+		{
+			EventID:   "2",
+			order:     1,
+			lineCount: 2,
+			Runes:     []rune("Test2.1"),
+		},
+		{
+			EventID:   "2",
+			order:     2,
+			lineCount: 2,
+			Runes:     []rune("Test2.2"),
+		},
+	})
+
+	if lv.eventCount != 2 {
+		t.Errorf("Should not change event count")
+	}
+	ne = ne.previous
+	if ne.order != 1 && string(ne.Runes) != "Test2.1" && ne.previous != lv.firstEvent {
+		t.Errorf("Invalid first replacement event")
+	}
+	if lv.current != ne {
+		t.Errorf("Current event must point to the new replacement")
+	}
+	if lv.firstEvent.next != ne {
+		t.Errorf("First event's next must point to the new replacement")
+	}
+	ne = ne.next
+	if ne.order != 2 && string(ne.Runes) != "Test2.2" && ne.next != nil {
+		t.Errorf("Invalid first replacement event")
+	}
+	if lv.lastEvent != ne {
+		t.Errorf("Last event must point to the new replacement")
+	}
+}
+
+func TestLogView_replaceFirstEvent(t *testing.T) {
+	lv := NewLogView()
+	lv.AppendEvent(NewLogEvent("2", "Test 2"))
+	lv.AppendEvent(NewLogEvent("3", "Test 3"))
+
+	lv.current = lv.firstEvent.next
+
+	toReplace := lv.firstEvent.next
+
+	ne := lv.replaceEvent(toReplace, []*logEventLine{
+		{
+			EventID:   "2",
+			order:     1,
+			lineCount: 2,
+			Runes:     []rune("Test2.1"),
+		},
+		{
+			EventID:   "2",
+			order:     2,
+			lineCount: 2,
+			Runes:     []rune("Test2.2"),
+		},
+	})
+
+	if lv.eventCount != 2 {
+		t.Errorf("Should not change event count")
+	}
+	ne = ne.previous
+	if ne.order != 1 && string(ne.Runes) != "Test2.1" && ne.previous != nil {
+		t.Errorf("Invalid first replacement event")
+	}
+	if lv.current != ne {
+		t.Errorf("Current event must point to the new replacement")
+	}
+	if lv.firstEvent.next != ne {
+		t.Errorf("First event must point to the new replacement")
+	}
+	ne = ne.next
+	if ne.order != 2 && string(ne.Runes) != "Test2.2" && ne.next != lv.lastEvent {
+		t.Errorf("Invalid first replacement event")
+	}
+	if lv.lastEvent != ne {
+		t.Errorf("Last event's previous must point to the new replacement")
+	}
+}
+
 func TestLogView_colorize(t *testing.T) {
 	lv := NewLogView()
 	lv.SetHighlightCurrentEvent(true)
@@ -182,7 +321,6 @@ func TestLogView_colorize(t *testing.T) {
 	msg := " Два wordoслова 11 møøsè"
 	event := &logEventLine{
 		EventID: "1",
-		Message: msg,
 		Runes:   []rune(msg),
 	}
 
