@@ -170,6 +170,22 @@ func NewLogView() *LogView {
 	return logView
 }
 
+// GetWidth returns the width of the list view
+func (lv *LogView) GetWidth() int {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.fullPageWidth
+}
+
+// GetHeight returns the width of the list view
+func (lv *LogView) GetHeight() int {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.pageHeight
+}
+
 // Clear deletes all events from the log view
 func (lv *LogView) Clear() {
 	defer lv.fireOnCurrentChange(lv.current)
