@@ -3,7 +3,7 @@ package logview
 import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
-	gui "github.com/rivo/tview"
+	gui "github.com/uaraven/tview"
 	"regexp"
 	"strconv"
 	"strings"
@@ -54,6 +54,10 @@ func (e logEventLine) AsLogEvent() *LogEvent {
 		Level:     e.Level,
 		Message:   string(e.Runes),
 	}
+}
+
+func (e logEventLine) message() string {
+	return string(e.Runes)
 }
 
 func (e logEventLine) getLineCount() uint {
@@ -160,9 +164,30 @@ func NewLogView() *LogView {
 		highlightColors:     make(map[string]tcell.Style),
 		screenCoords:        make([]int, 2),
 		concatenateEvents:   false,
+		newEventMatcher:     regexp.MustCompile(`^[^\s]`),
 	}
 	logView.Box.SetBorder(false)
 	return logView
+}
+
+// Clear deletes all events from the log view
+func (lv *LogView) Clear() {
+	defer lv.fireOnCurrentChange(lv.current)
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.firstEvent = nil
+	lv.lastEvent = nil
+	lv.current = nil
+	lv.top = nil
+	lv.eventCount = 0
+}
+
+// GetEventCount returns number of events in the log view
+func (lv *LogView) GetEventCount() uint {
+	lv.RLock()
+	defer lv.RUnlock()
+	return lv.eventCount
 }
 
 // SetMaxEvents sets a maximum number of events that log view will hold
@@ -349,6 +374,17 @@ func (lv *LogView) SetHighlightColor(group string, foreground tcell.Color, backg
 	defer lv.Unlock()
 
 	lv.highlightColors[group] = tcell.StyleDefault.Foreground(foreground).Background(background)
+}
+
+// SetHighlightColorMap allows to set all the highlight colors with one call. This will remove all previously
+// configured highlighting colors
+//
+// Parameter must be a map from string (name of the group) to tcell.Style.
+func (lv *LogView) SetHighlightColorMap(colors map[string]tcell.Style) {
+	lv.Lock()
+	defer lv.Unlock()
+
+	lv.highlightColors = colors
 }
 
 // SetWarningColor sets the background color for events with level == LogLevelWarning.
@@ -756,7 +792,7 @@ func (lv *LogView) fireOnCurrentChange(oldCurrent *logEventLine) {
 func (lv *LogView) append(logEvent *LogEvent) {
 	var event *logEventLine
 
-	if !lv.concatenateEvents && lv.newEventMatcher == nil || lv.newEventMatcher.MatchString(logEvent.Message) {
+	if !lv.concatenateEvents || lv.newEventMatcher == nil || lv.newEventMatcher.MatchString(logEvent.Message) || lv.lastEvent == nil {
 		// defensive copy of Log event
 		event = &logEventLine{
 			EventID:     logEvent.EventID,
@@ -767,6 +803,7 @@ func (lv *LogView) append(logEvent *LogEvent) {
 			lineCount:   1,
 			lineID:      lv.eventCount + 1,
 			start:       0,
+			order:       0,
 			end:         utf8.RuneCountInString(logEvent.Message),
 			hasNewLines: strings.Contains(logEvent.Message, "\n"),
 		}
@@ -775,7 +812,7 @@ func (lv *LogView) append(logEvent *LogEvent) {
 		event = lv.lastEvent
 		event.Runes = append(event.Runes, []rune("\n"+logEvent.Message)...)
 		event.hasNewLines = event.hasNewLines || strings.Contains(logEvent.Message, "\n")
-		lv.mergeWrappedLines(event)
+		event = lv.mergeWrappedLines(event)
 	}
 
 	// process event
@@ -925,7 +962,6 @@ func (lv *LogView) colorize(event *logEventLine) {
 	if event.order != 0 {
 		panic(fmt.Errorf("cannot colorize wrapped line"))
 	}
-	text := string(event.Runes)
 	defaultStyle := lv.defaultStyle
 	useSpecialBg := false
 	if lv.highlightLevels && event.Level != LogLevelInfo {
@@ -937,6 +973,7 @@ func (lv *LogView) colorize(event *logEventLine) {
 		}
 	}
 	if lv.highlightingEnabled && lv.highlightPattern != nil {
+		text := event.message()
 		groupIndices := lv.highlightPattern.FindStringSubmatchIndex(text)
 		if len(groupIndices) == 0 {
 			return

@@ -3,7 +3,7 @@ package logview
 import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
-	gui "github.com/rivo/tview"
+	gui "github.com/uaraven/tview"
 	"sync"
 	"time"
 )
@@ -57,6 +57,16 @@ func NewLogVelocityView(bucketWidth time.Duration) *LogVelocityView {
 		showLogLevel: LogLevelAll,
 		anchor:       nil,
 	}
+}
+
+// Clear resets all the statistics. Bucket width and anchor do not change
+func (lh *LogVelocityView) Clear() {
+	lh.Lock()
+	defer lh.Unlock()
+
+	lh.infoBuckets = make(map[int64]int)
+	lh.warnBuckets = make(map[int64]int)
+	lh.errorBuckets = make(map[int64]int)
 }
 
 // AppendLogEvents adds event to a velocity chart

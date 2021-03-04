@@ -2,7 +2,7 @@ package logview
 
 import (
 	"github.com/gdamore/tcell/v2"
-	gui "github.com/rivo/tview"
+	gui "github.com/uaraven/tview"
 	"strconv"
 	"testing"
 )
