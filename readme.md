@@ -1,7 +1,8 @@
-# LogView widget for cview
+# LogView widget for tview/cview
 
-LogView widget for [tview](https://github.com/rivo/tview). It will also work with [cview](https://gitlab.com/tslocum/cview),
-just replace import.
+LogView widget for [tview](https://github.com/rivo/tview). 
+
+It will also work with [cview](https://gitlab.com/tslocum/cview), just replace import `github.com/rivo/tview` with `gitlab.com/rivo/cview`. 
 
 ![](screen.png)
 
