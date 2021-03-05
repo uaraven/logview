@@ -3,7 +3,7 @@ package logview
 import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
-	gui "github.com/uaraven/tview"
+	gui "github.com/rivo/tview"
 	"regexp"
 	"strconv"
 	"strings"

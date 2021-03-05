@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/araddon/dateparse"
 	"github.com/gdamore/tcell/v2"
-	logview2 "github.com/uaraven/logview"
-	gui "github.com/uaraven/tview"
+	gui "github.com/rivo/tview"
+	"github.com/uaraven/logview"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -17,8 +17,8 @@ import (
 
 type UI struct {
 	app       *gui.Application
-	histogram *logview2.LogVelocityView
-	logView   *logview2.LogView
+	histogram *logview.LogVelocityView
+	logView   *logview.LogView
 }
 
 // CreateAppUI creates base UI layout
@@ -26,16 +26,16 @@ func CreateAppUI() *UI {
 	app := gui.NewApplication()
 	app.EnableMouse(true)
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if logview2.HitShortcut(event, []string{"q"}) {
+		if logview.HitShortcut(event, []string{"q"}) {
 			app.Stop()
 		}
 		return event
 	})
 
-	logView := logview2.NewLogView()
+	logView := logview.NewLogView()
 	logView.SetBorder(false)
 
-	histogramView := logview2.NewLogVelocityView(1 * time.Second)
+	histogramView := logview.NewLogVelocityView(1 * time.Second)
 
 	flex := gui.NewFlex()
 	flex.SetDirection(gui.FlexRow)
@@ -105,13 +105,13 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			level := logview2.LogLevelInfo
+			level := logview.LogLevelInfo
 			if st == "404" {
-				level = logview2.LogLevelWarning
+				level = logview.LogLevelWarning
 			} else if st == "503" {
-				level = logview2.LogLevelError
+				level = logview.LogLevelError
 			}
-			event := &logview2.LogEvent{
+			event := &logview.LogEvent{
 				EventID:   strconv.Itoa(i),
 				Level:     level,
 				Message:   line,
