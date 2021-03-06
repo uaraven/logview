@@ -139,10 +139,10 @@ func (lv *LogView) buildSpans(text []rune, groups []captureGroup, defaultStyle t
 		spans = append(spans, matched)
 		currentPos += group.Length
 	}
-	if currentPos < len(text)-1 {
+	if currentPos < len(text) {
 		afterSpan := styledSpan{
 			start: currentPos,
-			end:   len(text),
+			end:   len(text) + 1,
 			style: defaultStyle,
 		}
 		spans = append(spans, afterSpan)
