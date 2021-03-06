@@ -66,13 +66,7 @@ func (ui *UI) Stop() {
 func main() {
 	ui := CreateAppUI()
 
-	ui.logView.SetHighlightPattern(`(?P<ip>[\d.]+)\s+-\s+(?P<host>.*)\s+\[(?P<timestamp>.*)]\s+"(?P<url>.*)"\s+(?P<status>\d{3})\s+(?P<size>\d+)`)
-	ui.logView.SetHighlightColorFg("ip", tcell.ColorLavender)
-	ui.logView.SetHighlightColorFg("host", tcell.ColorLightGreen)
-	ui.logView.SetHighlightColorFg("timestamp", tcell.ColorYellow)
-	ui.logView.SetHighlightColorFg("url", tcell.ColorCadetBlue)
-	ui.logView.SetHighlightColorFg("status", tcell.ColorRoyalBlue)
-	ui.logView.SetHighlightColorFg("size", tcell.ColorBlanchedAlmond)
+	ui.logView.SetHighlightPattern(`(?P<lavender>[\d.]+)\s+(-)\s+(?P<lightgreen>.*)\s+\[(?P<yellow>[^]]+)]\s+"(?P<cadetblue>.*)"\s+(?P<skyblue_maroon>\d{3})\s+(?P<blanchedalmond>\d+)`)
 
 	ui.logView.SetErrorBgColor(tcell.Color52)
 	ui.logView.SetWarningBgColor(tcell.Color100)
@@ -83,7 +77,7 @@ func main() {
 	ui.logView.SetHighlightCurrentEvent(true)
 	ui.logView.SetShowTimestamp(true)
 
-	content, err := ioutil.ReadFile("apache.log")
+	content, err := ioutil.ReadFile("example/apache.log")
 
 	if err != nil {
 		log.Fatal(err)

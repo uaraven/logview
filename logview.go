@@ -2,6 +2,7 @@ package logview
 
 import (
 	"fmt"
+	"github.com/dlclark/regexp2"
 	"github.com/gdamore/tcell/v2"
 	gui "github.com/rivo/tview"
 	"regexp"
@@ -104,8 +105,7 @@ type LogView struct {
 	concatenateEvents bool
 
 	highlightingEnabled bool
-	highlightPattern    *regexp.Regexp
-	highlightColors     map[string]tcell.Style
+	highlightPattern    *regexp2.Regexp
 
 	highlightLevels bool
 	warningBgColor  tcell.Color
@@ -137,7 +137,7 @@ type LogView struct {
 
 	onCurrentChanged OnCurrentChanged
 
-	// force rewrapping on next draw
+	// force re-wrapping on next draw
 	forceWrap bool
 
 	sync.RWMutex
@@ -161,7 +161,6 @@ func NewLogView() *LogView {
 		errorBgColor:        tcell.ColorIndianRed,
 		sourceStyle:         defaultStyle.Foreground(tcell.ColorDarkGoldenrod),
 		timestampStyle:      defaultStyle.Foreground(tcell.ColorDarkOrange),
-		highlightColors:     make(map[string]tcell.Style),
 		screenCoords:        make([]int, 2),
 		concatenateEvents:   false,
 		newEventMatcher:     regexp.MustCompile(`^[^\s]`),
@@ -355,7 +354,7 @@ func (lv *LogView) SetHighlightPattern(pattern string) {
 	lv.Lock()
 	defer lv.Unlock()
 
-	lv.highlightPattern = regexp.MustCompile(pattern)
+	lv.highlightPattern = regexp2.MustCompile(pattern, regexp2.IgnoreCase+regexp2.RE2)
 }
 
 // SetHighlighting enables/disables event message highlighting according to the pattern set by SetHighlightPattern.
@@ -366,41 +365,6 @@ func (lv *LogView) SetHighlighting(enable bool) {
 	defer lv.Unlock()
 
 	lv.highlightingEnabled = enable
-}
-
-// SetHighlightColorFg sets foreground color for a named group "group". Default background color will be used
-func (lv *LogView) SetHighlightColorFg(group string, foreground tcell.Color) {
-	lv.Lock()
-	defer lv.Unlock()
-
-	lv.highlightColors[group] = tcell.StyleDefault.Foreground(foreground).Background(lv.getBackgroundColor())
-}
-
-// SetHighlightColorBg sets background color for a named group "group". Default foreground color will be used
-func (lv *LogView) SetHighlightColorBg(group string, background tcell.Color) {
-	lv.Lock()
-	defer lv.Unlock()
-
-	lv.highlightColors[group] = tcell.StyleDefault.Foreground(lv.getTextColor()).Background(background)
-}
-
-// SetHighlightColor sets both foreground and background colors for a named group "group".
-func (lv *LogView) SetHighlightColor(group string, foreground tcell.Color, background tcell.Color) {
-	lv.Lock()
-	defer lv.Unlock()
-
-	lv.highlightColors[group] = tcell.StyleDefault.Foreground(foreground).Background(background)
-}
-
-// SetHighlightColorMap allows to set all the highlight colors with one call. This will remove all previously
-// configured highlighting colors
-//
-// Parameter must be a map from string (name of the group) to tcell.Style.
-func (lv *LogView) SetHighlightColorMap(colors map[string]tcell.Style) {
-	lv.Lock()
-	defer lv.Unlock()
-
-	lv.highlightColors = colors
 }
 
 // SetWarningColor sets the background color for events with level == LogLevelWarning.
@@ -546,7 +510,7 @@ func (lv *LogView) AppendEvents(events []*LogEvent) {
 
 // ScrollPageDown scrolls the log view one screen down
 //
-// This will enable autofollowing if the last line has been reached
+// This will enable auto follow if the last line has been reached
 func (lv *LogView) ScrollPageDown() {
 	defer lv.fireOnCurrentChange(lv.current)
 	lv.Lock()
@@ -972,94 +936,6 @@ func (lv *LogView) mergeWrappedLines(event *logEventLine) *logEventLine {
 		event.next = nil
 	}
 	return event
-}
-
-func (lv *LogView) colorize(event *logEventLine) {
-	if event.order != 0 {
-		panic(fmt.Errorf("cannot colorize wrapped line"))
-	}
-	defaultStyle := lv.defaultStyle
-	useSpecialBg := false
-	if lv.highlightLevels && event.Level != LogLevelInfo {
-		useSpecialBg = true
-		if event.Level == LogLevelWarning {
-			defaultStyle = defaultStyle.Background(lv.warningBgColor)
-		} else {
-			defaultStyle = defaultStyle.Background(lv.errorBgColor)
-		}
-	}
-	if lv.highlightingEnabled && lv.highlightPattern != nil {
-		text := event.message()
-		groupIndices := lv.highlightPattern.FindStringSubmatchIndex(text)
-		if len(groupIndices) == 0 {
-			return
-		}
-		groupIndices = groupIndices[2:]
-		names := lv.highlightPattern.SubexpNames()[1:]
-		event.styleSpans = lv.buildSpans(text, groupIndices, names, defaultStyle, useSpecialBg)
-	} else {
-		event.styleSpans = []styledSpan{
-			{
-				start: 0,
-				end:   len(event.Runes),
-				style: defaultStyle,
-			},
-		}
-	}
-}
-
-func (lv *LogView) buildSpans(text string, groupIndices []int, groupNames []string, defaultStyle tcell.Style, useDefaultBg bool) []styledSpan {
-	currentPos := 0
-	currentRunePos := 0
-	spans := make([]styledSpan, 0)
-
-	_, dbg, _ := defaultStyle.Decompose()
-
-	for i, name := range groupNames {
-		st := groupIndices[i*2]
-		en := groupIndices[i*2+1]
-		if st != -1 && en != -1 {
-			if st != currentPos {
-				runeLen := utf8.RuneCountInString(text[currentPos:st])
-				beforeSpan := styledSpan{
-					start: currentRunePos,
-					end:   currentRunePos + runeLen - 1,
-					style: defaultStyle,
-				}
-				spans = append(spans, beforeSpan)
-				currentRunePos = currentRunePos + runeLen
-			}
-
-			var style tcell.Style
-			var ok bool
-			if style, ok = lv.highlightColors[name]; !ok {
-				continue
-			}
-
-			if useDefaultBg {
-				style = style.Background(dbg)
-			}
-
-			runeLen := utf8.RuneCountInString(text[st:en])
-			matched := styledSpan{
-				start: currentRunePos,
-				end:   currentRunePos + runeLen - 1,
-				style: style,
-			}
-			spans = append(spans, matched)
-			currentRunePos += runeLen
-			currentPos = en
-		}
-	}
-	if currentPos < len(text)-1 {
-		afterSpan := styledSpan{
-			start: currentRunePos,
-			end:   utf8.RuneCountInString(text),
-			style: defaultStyle,
-		}
-		spans = append(spans, afterSpan)
-	}
-	return spans
 }
 
 func (lv *LogView) insertAfter(node *logEventLine, new *logEventLine, adjustLineCount bool) *logEventLine {

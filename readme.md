@@ -43,6 +43,31 @@ of highlights for all the log events call `LogView.RefreshHighlighs()` method.
 
 Changes to any of the highlights or default Log view style would require recalculation. Changes to the background colour of
 current event or error and warning level events do not require recalculation.
+
+## Event Message Highlighting
+
+LogView doesn't use tview color tags, mostly because they are an unnecessary step in colorizing event message. LogView
+accepts regular expression to extract parts of the log message and apply styles to them.
+
+Named capture groups define parts of the message that should be highlighted, and the name of the group defines the colors.
+
+Group name must match `foreground_background` pattern. Background color is optional and colors must match names of "extended" 
+web colors. Defining colors in hex is not yet supported.
+
+**Note**: Regular expression syntax for color highlighting is different from standard Go regexp syntax, you can use
+lookahead and lookbehind but setting regexp flags with (?iUa), etc is not supported. Using lookahead/behind can be a 
+significant performance hit though. A general rule is to try to stick to the simplest expressions possible. 
+Use non-capturing groups for everything, except for the things you need highlighted.
+                                                                       
+See [regexp2 readme](https://github.com/dlclark/regexp2) for more details.  
+
+Examples (note the use of non-capturing groups):
+    
+    (?P<lavender>\d{2}(?:[:.-]\d{2,3})+) - match time tokens like 2021-03-05 or 12:23:44.332 and highlight them with 
+                                           lavender color
+    (?:\b(?P<white_lightsalmon>info|warning|error|trace|debug)\b) - match debug level as a separate word and highlight
+                                           it as white on reddish color
+
 ## LogVelocityView Widget
 
 Log velocity widget displays bar chart of number of log events per time period. Widget can show count for all events or
