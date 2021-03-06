@@ -1135,7 +1135,6 @@ func (lv *LogView) printSpecial(screen tcell.Screen, x int, y int, event *logEve
 	return x + len(ts) + 2
 }
 
-// TODO: implement runes and graphemes, now it will be print weird things for unicode characters
 func (lv *LogView) printLogLine(screen tcell.Screen, x int, y int, event *logEventLine) {
 	// find first styled span for the event
 	spanIndex := 0
@@ -1160,7 +1159,7 @@ func (lv *LogView) printLogLine(screen tcell.Screen, x int, y int, event *logEve
 		screen.SetCell(i, y, style, event.Runes[textPos])
 		i++
 		textPos++
-		if textPos > event.styleSpans[spanIndex].end {
+		if textPos >= event.styleSpans[spanIndex].end {
 			spanIndex++
 		}
 	}

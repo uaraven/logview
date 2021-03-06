@@ -55,7 +55,7 @@ func (lv *LogView) colorize(event *logEventLine) *logEventLine {
 	if lv.highlightingEnabled && lv.highlightPattern != nil {
 		text := event.message()
 		match, err := lv.highlightPattern.FindStringMatch(text)
-		if err != nil {
+		if err != nil || match == nil {
 			return lv.defaultStyleEvent(event)
 		}
 		groups := make([]captureGroup, 0)
@@ -114,7 +114,7 @@ func (lv *LogView) buildSpans(text []rune, groups []captureGroup, defaultStyle t
 			runeLen := len(text[currentPos:group.Index])
 			beforeSpan := styledSpan{
 				start: currentPos,
-				end:   currentPos + runeLen - 1,
+				end:   currentPos + runeLen,
 				style: defaultStyle,
 			}
 			spans = append(spans, beforeSpan)
@@ -129,7 +129,7 @@ func (lv *LogView) buildSpans(text []rune, groups []captureGroup, defaultStyle t
 
 		matched := styledSpan{
 			start: currentPos,
-			end:   currentPos + group.Length - 1,
+			end:   currentPos + group.Length,
 			style: style,
 		}
 		spans = append(spans, matched)

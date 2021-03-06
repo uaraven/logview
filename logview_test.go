@@ -146,14 +146,15 @@ func TestLogView_WrapEvent(t *testing.T) {
 	lv.pageWidth = 20
 	lv.AppendEvent(NewLogEvent("1", "Test 1"))
 	lv.AppendEvent(NewLogEvent("2", "Test 2"))
+	lv.SetLineWrap(true)
 
 	//										   1        10        20       30
 	//                                         |        |         |        |
 	event := NewLogEvent("3", "Line is wide але it has a\nnew line")
 	lv.AppendEvent(event)
 
-	if lv.EventCount() != 5 {
-		t.Errorf("EventCount must be 5")
+	if lv.EventCount() != 3 {
+		t.Errorf("EventCount must be 3")
 	}
 
 	e := lv.firstEvent.next.next
@@ -313,10 +314,6 @@ func TestLogView_colorize(t *testing.T) {
 	lv := NewLogView()
 	lv.SetHighlightCurrentEvent(true)
 	lv.SetHighlightPattern(`\s+(?P<word1>[\p{L}]*)\s+(?P<word2>.*)\s+(?P<num>\d+) (?P<word3>[\p{L}]*)`)
-	lv.SetHighlightColorFg("word1", tcell.ColorYellow)
-	lv.SetHighlightColorFg("word2", tcell.ColorYellowGreen)
-	lv.SetHighlightColorFg("word3", tcell.ColorYellowGreen)
-	lv.SetHighlightColorFg("num", tcell.Color16)
 
 	msg := " Два wordoслова 11 møøsè"
 	event := &logEventLine{
@@ -374,9 +371,6 @@ func BenchmarkLogView(b *testing.B) {
 	screen := tcell.NewSimulationScreen("UTF-8")
 	lv := NewLogView()
 	lv.SetHighlightPattern(`(?P<g1>Event)\s+(?P<g2>#\d+)\s+(?P<g3>.*)`)
-	lv.SetHighlightColorFg("g1", tcell.ColorDarkCyan)
-	lv.SetHighlightColorFg("g2", tcell.ColorDarkGreen)
-	lv.SetHighlightColorFg("g3", tcell.ColorYellow)
 	lv.SetHighlighting(true)
 	lv.SetLevelHighlighting(true)
 
