@@ -56,18 +56,22 @@ Group name must match `foreground_background` pattern. Background color is optio
 web colors. Defining colors in hex is not yet supported.
 
 **Note**: Regular expression syntax for color highlighting is different from standard Go regexp syntax, you can use
-lookahead and lookbehind but setting regexp flags with (?iUa), etc is not supported. Using lookahead/behind can be a 
-significant performance hit though. A general rule is to try to stick to the simplest expressions possible. 
+lookahead and lookbehind but setting regexp flags within expression (i.e. `(?iU)`) is not supported. Using 
+lookahead/behind can be a significant performance hit though. A general rule is to try to stick to the simplest 
+expressions possible. 
 Use non-capturing groups for everything, except for the things you need highlighted.
                                                                        
 See [regexp2 readme](https://github.com/dlclark/regexp2) for more details.  
 
 Examples (note the use of non-capturing groups):
-    
-    (?P<lavender>\d{2}(?:[:.-]\d{2,3})+) - match time tokens like 2021-03-05 or 12:23:44.332 and highlight them with 
-                                           lavender color
-    (?:\b(?P<white_lightsalmon>info|warning|error|trace|debug)\b) - match debug level as a separate word and highlight
-                                           it as white on reddish color
+
+Match time tokens like 2021-03-05 or 12:23:44.332 and highlight them with "lavender" color
+
+    (?P<lavender>\d{2}(?:[:.-]\d{2,3})+) 
+
+Match debug level as a separate word and highlight it as white on reddish color
+
+    (?:\b(?P<white_lightsalmon>info|warning|error|trace|debug)\b) 
 
 ## LogVelocityView Widget
 
