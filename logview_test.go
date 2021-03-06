@@ -310,45 +310,6 @@ func TestLogView_replaceFirstEvent(t *testing.T) {
 	}
 }
 
-func TestLogView_colorize(t *testing.T) {
-	lv := NewLogView()
-	lv.SetHighlightCurrentEvent(true)
-	lv.SetHighlightPattern(`\s+(?P<word1>[\p{L}]*)\s+(?P<word2>.*)\s+(?P<num>\d+) (?P<word3>[\p{L}]*)`)
-
-	msg := " Два wordoслова 11 møøsè"
-	event := &logEventLine{
-		EventID: "1",
-		Runes:   []rune(msg),
-	}
-
-	lv.colorize(event)
-
-	getSpan := func(i int) string {
-		return string(event.Runes[event.styleSpans[i].start:event.styleSpans[i].end])
-	}
-
-	expected := map[int]string{
-		0: " ",
-		1: "Два",
-		2: " ",
-		3: "wordoслова",
-		4: " ",
-		5: "11",
-		6: " ",
-		7: "møøsè",
-	}
-
-	if len(event.styleSpans) != len(expected) {
-		t.Errorf("Invalid number of spans, expected 3, got %d", len(event.styleSpans))
-	}
-
-	for k, v := range expected {
-		if getSpan(k) != v {
-			t.Errorf("Invalid span %d, expected '%s', got '%s'", k, v, getSpan(k))
-		}
-	}
-}
-
 func TestLogView_mergeWrappedLines(t *testing.T) {
 	lv := NewLogView()
 	lv.pageWidth = 20

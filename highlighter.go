@@ -5,6 +5,7 @@ import (
 	"github.com/dlclark/regexp2"
 	"github.com/gdamore/tcell/v2"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -38,6 +39,11 @@ func (cg captureGroupSorter) Swap(i, j int) {
 	cg[i], cg[j] = cg[j], cg[i]
 }
 
+func isInt(text string) bool {
+	_, err := strconv.Atoi(text)
+	return err == nil
+}
+
 func (lv *LogView) colorize(event *logEventLine) *logEventLine {
 	if event.order != 0 {
 		panic(fmt.Errorf("cannot colorize wrapped line"))
@@ -61,7 +67,7 @@ func (lv *LogView) colorize(event *logEventLine) *logEventLine {
 		groups := make([]captureGroup, 0)
 		for match != nil {
 			for _, gr := range match.Groups() {
-				if len(gr.Captures) > 0 {
+				if len(gr.Captures) > 0 && !isInt(gr.Name) {
 					groups = append(groups, captureGroup{
 						Capture: gr.Capture,
 						name:    gr.Name,
@@ -73,8 +79,6 @@ func (lv *LogView) colorize(event *logEventLine) *logEventLine {
 				return lv.defaultStyleEvent(event)
 			}
 		}
-		// skip zero group as it represents the whole match  q
-		groups = groups[1:]
 		sort.Sort(captureGroupSorter(groups))
 		event.styleSpans = lv.buildSpans([]rune(text), groups, defaultStyle, useSpecialBg)
 	} else {
