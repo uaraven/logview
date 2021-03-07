@@ -64,9 +64,30 @@ func (lh *LogVelocityView) Clear() {
 	lh.Lock()
 	defer lh.Unlock()
 
-	lh.infoBuckets = make(map[int64]int)
-	lh.warnBuckets = make(map[int64]int)
-	lh.errorBuckets = make(map[int64]int)
+	lh.reset()
+}
+
+var (
+	bucketSizes = []int64{0, 10, 60, 120, 300, 600, 900, 1800, 3600, 1e10}
+)
+
+func (lh *LogVelocityView) ScaleFor(duration time.Duration) {
+	lh.Lock()
+	defer lh.Unlock()
+
+	lh.scaleForDuration(duration)
+}
+
+func (lh *LogVelocityView) AutoScale(from, to time.Time) {
+	lh.Lock()
+	defer lh.Unlock()
+
+	lh.reset()
+	if from.After(to) {
+		from, to = to, from
+	}
+	duration := to.Sub(from)
+	lh.scaleForDuration(duration)
 }
 
 // AppendLogEvents adds event to a velocity chart
@@ -333,4 +354,26 @@ func durationToString(d int64) string {
 		return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 	}
 	return fmt.Sprintf("%02d:%02d", minutes, seconds)
+}
+
+func (lh *LogVelocityView) reset() {
+	lh.infoBuckets = make(map[int64]int)
+	lh.warnBuckets = make(map[int64]int)
+	lh.errorBuckets = make(map[int64]int)
+}
+
+func (lh *LogVelocityView) scaleForDuration(duration time.Duration) {
+	dur := duration.Seconds() / float64(lh.width)
+	if dur < 1 {
+		dur = 1
+	}
+	var bucketW int64
+	for i := 1; i < len(bucketSizes); i++ {
+		bucketW = int64(dur + 0.5)
+		if bucketW > bucketSizes[i-1] && bucketW <= bucketSizes[i] {
+			bucketW = (bucketW / bucketSizes[i-1]) * bucketSizes[i-1]
+			break
+		}
+	}
+	lh.bucketWidth = bucketW
 }

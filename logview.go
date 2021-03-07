@@ -667,7 +667,7 @@ func (lv *LogView) ScrollToTimestamp(timestamp time.Time) bool {
 	lv.top = event
 	lv.current = event
 	lv.adjustTop()
-	for i := 0; i < 3; i++ {
+	for i := 0; i < lv.pageHeight/4; i++ { // scroll a little bit back
 		if lv.top.previous != nil {
 			lv.top = lv.top.previous
 		}
@@ -691,7 +691,7 @@ func (lv *LogView) ScrollToEventID(eventID string) bool {
 	lv.top = event
 	lv.current = event
 	lv.adjustTop()
-	for i := 0; i < 3; i++ {
+	for i := 0; i < lv.pageHeight/4; i++ {
 		if lv.top.previous != nil {
 			lv.top = lv.top.previous
 		}
