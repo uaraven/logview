@@ -274,7 +274,7 @@ func (lv *LogView) IsConcatenateEventsEnabled() bool {
 //     at org.another.java.package
 //
 // Each line might be a new log event, but it makes sense to treat whole stack trace as as a single event.
-func (lv *LogView) SetNewEventMatcher(regex string) {
+func (lv *LogView) SetNewEventMatchingRegex(regex string) {
 	lv.Lock()
 	defer lv.Unlock()
 
@@ -282,6 +282,18 @@ func (lv *LogView) SetNewEventMatcher(regex string) {
 		lv.newEventMatcher = nil
 	} else {
 		lv.newEventMatcher = regexp.MustCompile(regex)
+	}
+}
+
+// GetNewEventMatchingRegex gets the regular expression used for detecting continuation events.
+func (lv *LogView) GetNewEventMatchingRegex() string {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	if lv.newEventMatcher == nil {
+		return ""
+	} else {
+		return lv.newEventMatcher.String()
 	}
 }
 
@@ -367,6 +379,14 @@ func (lv *LogView) SetHighlighting(enable bool) {
 	lv.highlightingEnabled = enable
 }
 
+// IsHighlightingEnabled returns the status of event message highlighting
+func (lv *LogView) IsHighlightingEnabled() bool {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.highlightingEnabled
+}
+
 // SetWarningColor sets the background color for events with level == LogLevelWarning.
 // Event level highlighting can be turned on and off with SetLevelHighlighting function.
 //
@@ -399,6 +419,14 @@ func (lv *LogView) SetLevelHighlighting(enabled bool) {
 	lv.highlightLevels = enabled
 }
 
+// IsLevelHighlightingEnabled returns the status of background color highlighting for events based on severity level
+func (lv *LogView) IsLevelHighlightingEnabled() bool {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.highlightLevels
+}
+
 // SetHighlightCurrentEvent enables background color highlighting for currently selected event
 func (lv *LogView) SetHighlightCurrentEvent(enabled bool) {
 	lv.Lock()
@@ -407,11 +435,48 @@ func (lv *LogView) SetHighlightCurrentEvent(enabled bool) {
 	lv.highlightCurrent = enabled
 }
 
+// IsHighlightCurrentEventEnabled returns the status background color highlighting for currently selected event
+func (lv *LogView) IsHighlightCurrentEventEnabled() bool {
+	lv.Lock()
+	defer lv.Unlock()
+
+	return lv.highlightCurrent
+}
+
+// GetCurrentEvent returns the currently selected event
 func (lv *LogView) GetCurrentEvent() *LogEvent {
 	lv.RLock()
 	defer lv.RUnlock()
 
 	return lv.current.AsLogEvent()
+}
+
+// FindMatchingEvent searches for a event that matches a given predicate
+// First event to be matched is the one with event id equal to startingEventId. If the startingEventId is an empty
+// string, the search will start from the first event in the log view.
+//
+// If no such event can be found it will return nil
+func (lv *LogView) FindMatchingEvent(startingEventId string, predicate func(event *LogEvent) bool) *LogEvent {
+	lv.Lock()
+	defer lv.Unlock()
+
+	event := lv.findByEventId(startingEventId)
+	for event != nil {
+		logEvent := event.AsLogEvent()
+		if predicate(logEvent) {
+			return logEvent
+		}
+		event = event.next
+	}
+	return nil
+}
+
+// GetFirstEvent returns the first event in the log view
+func (lv *LogView) GetFirstEvent() *LogEvent {
+	lv.Lock()
+	defer lv.Unlock()
+
+	return lv.firstEvent.AsLogEvent()
 }
 
 // SetBorder does nothing
@@ -600,8 +665,13 @@ func (lv *LogView) ScrollToTimestamp(timestamp time.Time) bool {
 		return false
 	}
 	lv.top = event
-	lv.adjustTop()
 	lv.current = event
+	lv.adjustTop()
+	for i := 0; i < 3; i++ {
+		if lv.top.previous != nil {
+			lv.top = lv.top.previous
+		}
+	}
 	return true
 }
 
@@ -614,20 +684,22 @@ func (lv *LogView) ScrollToEventID(eventID string) bool {
 	lv.Lock()
 	defer lv.Unlock()
 
-	event := lv.firstEvent
-	for event.EventID != eventID && event != nil {
-		event = event.next
-	}
+	event := lv.findByEventId(eventID)
 	if event == nil {
 		return false
 	}
 	lv.top = event
-	lv.adjustTop()
 	lv.current = event
+	lv.adjustTop()
+	for i := 0; i < 3; i++ {
+		if lv.top.previous != nil {
+			lv.top = lv.top.previous
+		}
+	}
 	return true
 }
 
-// SetShowSources enables/disables the displaying of event source
+// SetShowSource enables/disables the displaying of event source
 //
 // Event Source is displayed to the left of the actual event message with style defined by SetSourceStyle and
 // is clipped to the length set by SetSourceClipLength (6 characters is the default)
@@ -636,6 +708,14 @@ func (lv *LogView) SetShowSource(enabled bool) {
 	defer lv.Unlock()
 
 	lv.showSource = enabled
+}
+
+// IsShowSource returns whether the showing of event source is enabled
+func (lv *LogView) IsShowSource() bool {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.showSource
 }
 
 // SetSourceClipLength sets the maximum length of event source that would be displayed if SetShowSource is on
@@ -664,6 +744,14 @@ func (lv *LogView) SetShowTimestamp(enabled bool) {
 	lv.showTimestamp = enabled
 }
 
+// IsShowTimestamp returns whether the showing of event source is enabled
+func (lv *LogView) IsShowTimestamp() bool {
+	lv.RLock()
+	defer lv.RUnlock()
+
+	return lv.showTimestamp
+}
+
 // SetTimestampFormat sets the format for displaying the event timestamp.
 //
 // Default is 15:04:05.000
@@ -674,25 +762,12 @@ func (lv *LogView) SetTimestampFormat(format string) {
 	lv.timestampFormat = format
 }
 
+// GetTimestampFormat returns the format used to display timestamps
 func (lv *LogView) GetTimestampFormat() string {
 	lv.RLock()
 	defer lv.RUnlock()
 
 	return lv.timestampFormat
-}
-
-func (lv *LogView) IsShowingTimestamp() bool {
-	lv.RLock()
-	defer lv.RUnlock()
-
-	return lv.showTimestamp
-}
-
-func (lv *LogView) IsShowingSource() bool {
-	lv.RLock()
-	defer lv.RUnlock()
-
-	return lv.showSource
 }
 
 // InputHandler returns the handler for this primitive.
@@ -1317,4 +1392,14 @@ func (lv *LogView) sourceHeaderWidth() int {
 
 func (lv *LogView) timestampHeaderWidth() int {
 	return len(lv.timestampFormat) + 3
+}
+
+func (lv *LogView) findByEventId(eventID string) *logEventLine {
+	event := lv.firstEvent
+	if eventID != "" {
+		for event.EventID != eventID && event != nil {
+			event = event.next
+		}
+	}
+	return event
 }

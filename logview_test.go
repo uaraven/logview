@@ -120,7 +120,7 @@ func TestLogView_Highlighting(t *testing.T) {
 func TestLogView_ConcatenateEvents(t *testing.T) {
 	lv := NewLogView()
 	lv.SetConcatenateEvents(true)
-	lv.SetNewEventMatcher(`^[^\s]`)
+	lv.SetNewEventMatchingRegex(`^[^\s]`)
 
 	event1 := NewLogEvent("1", "Line 1")
 	event2 := NewLogEvent("2", " and still line 1")
@@ -325,6 +325,27 @@ func TestLogView_mergeWrappedLines(t *testing.T) {
 	}
 	if lv.firstEvent != e1 && lv.lastEvent != e1 {
 		t.Errorf("first and last should point to unwrapped event")
+	}
+}
+
+func TestLogView_FindMatchingEvent(t *testing.T) {
+	lv := NewLogView()
+	lv.AppendEvents(randomEvents(100, time.Now()))
+
+	event := lv.FindMatchingEvent("e20", func(event *LogEvent) bool {
+		return event.EventID == "e50"
+	})
+
+	if event == nil || event.EventID != "e50" {
+		t.Errorf("Failed to find event with id == e50, event: %v", event)
+	}
+
+	event = lv.FindMatchingEvent("e50", func(event *LogEvent) bool {
+		return event.EventID == "e20"
+	})
+
+	if event != nil {
+		t.Errorf("Found event with id == e20, should have returned nil")
 	}
 }
 
