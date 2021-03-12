@@ -1418,7 +1418,7 @@ func (lv *LogView) timestampHeaderWidth() int {
 func (lv *LogView) findByEventId(eventID string) *logEventLine {
 	event := lv.firstEvent
 	if eventID != "" {
-		for event.EventID != eventID && event != nil {
+		for event != nil && event.EventID != eventID {
 			event = event.next
 		}
 	}
