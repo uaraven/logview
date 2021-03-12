@@ -891,8 +891,8 @@ func (lv *LogView) append(logEvent *LogEvent) {
 	lv.ensureEventLimit()
 
 	// if we're in following mode and have enough events to fill the page then update the top position
-	if lv.following && lv.eventCount > uint(lv.pageHeight) {
-		lv.top = lv.atOffset(lv.lastEvent, -lv.pageHeight)
+	if lv.following && lv.eventCount >= uint(lv.pageHeight) {
+		lv.top = lv.atOffset(lv.lastEvent, -lv.pageHeight+1)
 		lv.current = event
 	}
 }
@@ -1118,6 +1118,9 @@ func (lv *LogView) replaceEvent(toReplace *logEventLine, replacement []*logEvent
 	}
 	if toReplace == lv.top {
 		lv.top = replacement[0]
+	}
+	if lv.current == toReplace {
+		lv.current = replacement[lastI]
 	}
 	return replacement[lastI]
 }
