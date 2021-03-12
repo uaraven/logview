@@ -68,7 +68,7 @@ func (lh *LogVelocityView) Clear() {
 }
 
 var (
-	bucketSizes = []int64{0, 10, 60, 120, 300, 600, 900, 1800, 3600, 1e10}
+	bucketSizes = []int64{1, 10, 60, 120, 300, 600, 900, 1800, 3600, 1e10}
 )
 
 func (lh *LogVelocityView) ScaleFor(duration time.Duration) {
