@@ -699,6 +699,20 @@ func (lv *LogView) ScrollToEventID(eventID string) bool {
 	return true
 }
 
+// SelectNextEvent selects the next event in the log view
+func (lv *LogView) SelectNextEvent() {
+	lv.Lock()
+	lv.scrollOneDown()
+	lv.Unlock()
+}
+
+// SelectPrevEvent selects the previous event in the log view
+func (lv *LogView) SelectPrevEvent() {
+	lv.Lock()
+	lv.scrollOneUp()
+	lv.Unlock()
+}
+
 // SetShowSource enables/disables the displaying of event source
 //
 // Event Source is displayed to the left of the actual event message with style defined by SetSourceStyle and
@@ -890,6 +904,7 @@ func (lv *LogView) atOffset(start *logEventLine, offset int) *logEventLine {
 	if offset == 0 {
 		return start
 	}
+
 	current := start
 	var steps int
 	if offset > 0 {
@@ -1313,7 +1328,11 @@ func (lv *LogView) scrollOneDown() {
 		return
 	}
 	lv.current = lv.atOffset(lv.current, 1)
-	// if we're past end of page or current highlighting is off then change the top
+
+	distance := lv.distance(lv.current, lv.top)
+	if distance >= lv.pageHeight {
+		lv.top = lv.atOffset(lv.top, 1)
+	}
 
 	lv.following = false
 }
@@ -1341,6 +1360,8 @@ func (lv *LogView) scrollPageDown() {
 	}
 }
 
+// distance calculates distance from start event to target event that is *above* the start event, i.e. distance
+// is calculated backwards
 func (lv *LogView) distance(start *logEventLine, target *logEventLine) int {
 	limit := lv.pageHeight
 	distance := 0
@@ -1402,4 +1423,8 @@ func (lv *LogView) findByEventId(eventID string) *logEventLine {
 		}
 	}
 	return event
+}
+
+func (lv *LogView) isLastLine(event *logEventLine) bool {
+	return lv.distance(lv.top, event) >= lv.pageHeight
 }
