@@ -2,7 +2,7 @@
 
 LogView widget for [tview](https://github.com/rivo/tview). 
 
-It will also work with [cview](https://gitlab.com/tslocum/cview), just replace import `github.com/rivo/tview` with `gitlab.com/rivo/cview`. 
+It will also work with [cview](https://gitlab.com/tslocum/cview), just replace import `github.com/rivo/tview` with `gitlab.com/tslocum/cview`. 
 
 ![](screen.png)
 
