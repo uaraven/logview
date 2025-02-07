@@ -1,8 +1,8 @@
 package logview
 
 import (
+	"code.rocketnine.space/tslocum/cbind"
 	"github.com/gdamore/tcell/v2"
-	"gitlab.com/tslocum/cbind"
 )
 
 // MIT License
