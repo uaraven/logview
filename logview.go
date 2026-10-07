@@ -997,18 +997,9 @@ func (lv *LogView) mergeWrappedLines(event *logEventLine) *logEventLine {
 	event.start = 0
 	event.lineCount = 1
 	event.end = len(event.Runes)
+	// continuation pieces of this event are the following events with order > 1
 	next := event.next
-	if next == lv.lastEvent {
-		lv.lastEvent = event
-	}
-	if next == lv.current {
-		lv.current = event
-	}
-	if next == lv.top {
-		lv.top = event
-	}
-	for next.next != nil && next.next.order > 1 { // find event with order <= 1, that will be
-		next = next.next
+	for next != nil && next.order > 1 {
 		if next == lv.lastEvent {
 			lv.lastEvent = event
 		}
@@ -1018,12 +1009,11 @@ func (lv *LogView) mergeWrappedLines(event *logEventLine) *logEventLine {
 		if next == lv.top {
 			lv.top = event
 		}
+		next = next.next
 	}
-	if next.next != nil {
-		event.next = next.next
-		next.next.previous = event
-	} else {
-		event.next = nil
+	event.next = next
+	if next != nil {
+		next.previous = event
 	}
 	return event
 }

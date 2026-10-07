@@ -328,6 +328,59 @@ func TestLogView_mergeWrappedLines(t *testing.T) {
 	}
 }
 
+// A wrapped event that is the last one in the list and consists of a single piece
+// (e.g. a short line ending with a new line) must survive unwrapping, as happens on resize.
+func TestLogView_mergeWrappedLinesSinglePieceLast(t *testing.T) {
+	lv := NewLogView()
+	lv.pageWidth = 20
+	lv.SetLineWrap(true)
+	lv.AppendEvent(NewLogEvent("1", "short\n"))
+
+	if lv.firstEvent.order != 1 || lv.firstEvent.next != nil {
+		t.Fatalf("expected a single wrapped piece, got order=%d", lv.firstEvent.order)
+	}
+	e := lv.mergeWrappedLines(lv.firstEvent)
+	if e.order != 0 || e.next != nil || lv.lastEvent != e {
+		t.Errorf("event must be unwrapped and remain the last one")
+	}
+}
+
+// Merging a single-piece wrapped event must not swallow the event that follows it.
+func TestLogView_mergeWrappedLinesSinglePieceKeepsNext(t *testing.T) {
+	lv := NewLogView()
+	lv.pageWidth = 20
+	lv.SetLineWrap(true)
+	lv.AppendEvent(NewLogEvent("1", "short\n"))
+	lv.AppendEvent(NewLogEvent("2", "next event"))
+
+	lv.mergeWrappedLines(lv.firstEvent)
+	if lv.firstEvent.next == nil || lv.firstEvent.next.EventID != "2" || lv.firstEvent.next.previous != lv.firstEvent {
+		t.Errorf("following event was lost or mislinked")
+	}
+}
+
+// Repeated rewrap with changing width (terminal resize) must not panic or lose events.
+func TestLogView_rewrapOnResize(t *testing.T) {
+	lv := NewLogView()
+	lv.SetLineWrap(true)
+	lv.pageWidth = 20
+	lv.AppendEvent(NewLogEvent("1", "short\n"))
+	lv.AppendEvent(NewLogEvent("2", "This is a rather long event and it should be wrapped"))
+	lv.AppendEvent(NewLogEvent("3", "tail\n"))
+
+	for _, w := range []int{10, 80, 5, 20, 200, 7} {
+		lv.pageWidth = w
+		lv.rewrapLines()
+		ids := map[string]bool{}
+		for e := lv.firstEvent; e != nil; e = e.next {
+			ids[e.EventID] = true
+		}
+		if len(ids) != 3 {
+			t.Fatalf("width %d: events lost, got %v", w, ids)
+		}
+	}
+}
+
 func TestLogView_FindMatchingEvent(t *testing.T) {
 	lv := NewLogView()
 	lv.AppendEvents(randomEvents(100, time.Now()))
